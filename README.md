@@ -29,11 +29,11 @@ Zero-cost, `no_std`-compatible secure wrappers for secrets — stack for fixed-s
 
 | Target    | Description                                      | Runtime per CI run |
 |-----------|--------------------------------------------------|--------------------|
-| `expose`  | Memory access + `finish_mut`                     | 60 minutes         |
 | `clone`   | `init_with`, `into_inner`, scoped zeroization    | 60 minutes         |
-| `serde`   | JSON + bincode deserialization from untrusted input | 60 minutes      |
-| `parsing` | `FromStr` parsing                                | 60 minutes         |
+| `expose`  | Memory access + `finish_mut`                     | 60 minutes         |
 | `mut`     | Unbounded `expose_mut()` mutation stress         | 60 minutes         |
+| `parsing` | `FromStr` parsing                                | 60 minutes         |
+| `serde`   | JSON + bincode deserialization from untrusted input | 60 minutes      |
 
 - 5 libFuzzer targets
 - 240 CPU minutes per nightly run
