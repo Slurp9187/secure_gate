@@ -29,17 +29,6 @@ fn fixed_is_truly_zero_cost() {
 }
 
 #[test]
-fn macros_work_perfectly() {
-    fixed_alias!(MyKey, 32);
-    let k1: MyKey = [42u8; 32].into();
-    let k2 = MyKey::new([42u8; 32]);
-    assert_eq!(k1.0, k2.0);
-
-    let iv = secure!([u8; 16], [1u8; 16]);
-    assert_eq!(iv.0, [1u8; 16]);
-}
-
-#[test]
 fn debug_is_redacted() {
     let key = Fixed::new([0u8; 32]);
     let pw = Dynamic::<String>::new("hunter2".to_string());
@@ -105,4 +94,15 @@ fn dynamic_alias_works() {
     assert_eq!(pw.len(), 7);
     pw.push('!');
     assert_eq!(&*pw, "hunter2!");
+}
+
+#[test]
+fn fixed_alias_works() {
+    fixed_alias!(MyKey, 32);
+    let k1: MyKey = [42u8; 32].into();
+    let k2 = MyKey::new([42u8; 32]);
+    assert_eq!(k1.0, k2.0);
+
+    let iv = secure!([u8; 16], [1u8; 16]);
+    assert_eq!(iv.0, [1u8; 16]);
 }
