@@ -162,13 +162,13 @@ dependencies = [
  "arbitrary",
  "bincode",
  "libfuzzer-sys",
- "secure_gate_0_5_0",
+ "secure_gate",
  "serde_json",
  "zeroize",
 ]
 
 [[package]]
-name = "secure_gate_0_5_0"
+name = "secure_gate"
 version = "0.1.0"
 dependencies = [
  "secrecy",

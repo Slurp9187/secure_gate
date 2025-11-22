@@ -4,7 +4,7 @@
 // (v0.5.0 – SecureGate, SecureBytes, SecureStr, SecurePassword, etc. are gone)
 #![no_main]
 use libfuzzer_sys::fuzz_target;
-use secure_gate_0_5_0::{Dynamic, Fixed};
+use secure_gate::{Dynamic, Fixed};
 
 fuzz_target!(|data: &[u8]| {
     if data.is_empty() {

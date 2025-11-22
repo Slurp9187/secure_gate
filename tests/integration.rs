@@ -1,7 +1,7 @@
 // tests/integration.rs
 // Final test suite — proves everything works
 
-use secure_gate_0_5_0::{dynamic_alias, fixed_alias, secure, Dynamic, Fixed};
+use secure_gate::{dynamic_alias, fixed_alias, secure, Dynamic, Fixed};
 
 #[test]
 fn basic_usage_and_deref() {

@@ -4,7 +4,7 @@
 // (v0.5.0 – SecureStr, SecureBytes, SecurePassword, etc. are gone; use Dynamic<T> + Fixed<T>)
 #![no_main]
 use libfuzzer_sys::fuzz_target;
-use secure_gate_0_5_0::Dynamic;
+use secure_gate::Dynamic;
 
 const MAX_LEN: usize = 1_000_000; // 1MB cap to avoid OOM
 

@@ -1,5 +1,5 @@
 [package]
-name = "secure_gate_0_5_0"
+name = "secure-gate"
 version = "0.1.0"
 edition = "2021"
 description = "Zero-cost secure wrappers for secrets — stack for fixed, heap for dynamic"

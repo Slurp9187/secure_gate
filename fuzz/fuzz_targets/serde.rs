@@ -5,7 +5,7 @@
 // test Fixed deserial, Dynamic serial + manual wrap)
 #![no_main]
 use libfuzzer_sys::fuzz_target;
-use secure_gate_0_5_0::{Dynamic, Fixed};
+use secure_gate::{Dynamic, Fixed};
 
 #[cfg(feature = "serde")]
 use serde_json;

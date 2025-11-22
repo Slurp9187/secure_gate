@@ -4,7 +4,7 @@
 // (v0.5.0 – SecureGate and old password types are gone)
 #![no_main]
 use libfuzzer_sys::fuzz_target;
-use secure_gate_0_5_0::{Dynamic, Fixed};
+use secure_gate::{Dynamic, Fixed};
 
 #[cfg(feature = "zeroize")]
 use zeroize::Zeroize;
