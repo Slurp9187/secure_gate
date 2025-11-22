@@ -25,20 +25,20 @@ Zero-cost, `no_std`-compatible secure wrappers for secrets — stack for fixed-s
 - `Dynamic<T>` uses `secrecy::SecretBox<T>` for heap-allocated, leak-protected dynamic secrets.
 - Both forward `ZeroizeOnDrop` and `Zeroize` for seamless integration.
 
-** Fuzz Workflows
+## Fuzzing Configuration
 
-| Feature        | Effect                                                                 |
-|:---------------|:-----------------------------------------------------------------------|
-| `zeroize`      | Enables zeroization via `secrecy` + `zeroize` (on by default)          |
-| `stack`        | Zero-allocation fixed-size secrets using `Zeroizing<T>` (on by default)|
-| `unsafe-wipe`  | Enables full allocation wiping (including spare capacity)             |
-| `serde`        | Serialization support                                                 |
-| `full`         | All features above                                                    |
+| Target    | Description                                      | Runtime per CI run |
+|-----------|--------------------------------------------------|--------------------|
+| `expose`  | Memory access + `finish_mut`                     | 60 minutes         |
+| `clone`   | `init_with`, `into_inner`, scoped zeroization    | 60 minutes         |
+| `serde`   | JSON + bincode deserialization from untrusted input | 60 minutes      |
+| `parsing` | `FromStr` parsing                                | 60 minutes         |
+| `mut`     | Unbounded `expose_mut()` mutation stress         | 60 minutes         |
 
-- `no_std` + `alloc` compatible
-- Redacted `Debug` and `Serialize` output
-- Test coverage includes slack wiping and timing safety
-- Initial "quick smoke" workflow passes all tests
+- 5 libFuzzer targets
+- 240 CPU minutes per nightly run
+- Runs on GitHub Actions (ubuntu-latest, nightly toolchain)
+- Artifacts uploaded on every run
 
 ## Installation
 
