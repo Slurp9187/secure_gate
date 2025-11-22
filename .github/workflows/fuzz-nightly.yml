@@ -3,7 +3,7 @@ name: Fuzz (nightly)
 on:
   schedule:
     - cron: "0 10 * * *" # 10:00 UTC = 3:00 AM MST
-  workflow_dispatch:
+  workflow_dispatch: # manual trigger when you need a long run
 
 jobs:
   fuzz:

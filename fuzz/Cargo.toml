@@ -8,7 +8,7 @@ publish = false
 cargo-fuzz = true
 
 [dependencies]
-secure_gate = { path = "../", features = [
+secure-gate = { path = "../", features = [
   "zeroize",
 ] } # base zeroize always on for fuzzing
 arbitrary = { version = "1.3", features = ["derive"] }
@@ -23,10 +23,10 @@ zeroize = { version = "1.8", default-features = false, features = [
 # Propagate every library feature exactly as defined (v0.5.0 has no 'stack', 'unsafe-wipe', or 'full')
 [features]
 # Base required feature
-zeroize = ["secure_gate/zeroize"]
+zeroize = ["secure-gate/zeroize"]
 
 # Optional library features
-serde = ["secure_gate/serde"]
+serde = ["secure-gate/serde"]
 
 # Default for fuzz runs – enables everything for maximum coverage
 default = ["zeroize", "serde"]
