@@ -2,6 +2,12 @@
 name = "secure_gate_0_5_0"
 version = "0.1.0"
 edition = "2021"
+description = "Zero-cost secure wrappers for secrets — stack for fixed, heap for dynamic"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Slurp9187/secure-gate"
+documentation = "https://docs.rs/secure-gate"
+keywords = ["crypto", "security", "zeroize", "no-std"]
+categories = ["cryptography", "no-std"]
 
 [dependencies]
 secrecy = { version = "0.10", default-features = false, optional = true }
@@ -11,10 +17,11 @@ zeroize = { version = "1.8", default-features = false, optional = true, features
 ] }
 serde = { version = "1.0", features = ["derive"], optional = true }
 
-# [dev-dependencies]
+[dev-dependencies]
 serde_json = "1.0"
 
 [features]
 default = ["zeroize"]
-zeroize = ["dep:zeroize", "dep:secrecy", "zeroize/zeroize_derive"]
+# zeroize = ["dep:zeroize", "dep:secrecy", "zeroize/zeroize_derive"]
+zeroize = ["dep:zeroize", "dep:secrecy"]
 serde = ["dep:serde"]
