@@ -106,3 +106,41 @@ fn fixed_alias_works() {
     let iv = secure!([u8; 16], [1u8; 16]);
     assert_eq!(iv.0, [1u8; 16]);
 }
+
+#[cfg(feature = "serde")]
+#[test]
+fn dynamic_deserialize_is_blocked_with_clear_error() {
+    use serde::Deserialize;
+
+    // Try to deserialize directly — should fail to compile
+    // But we test the runtime error message via a helper type
+    #[derive(Deserialize, Debug)] // ← added Debug
+    struct Wrapper {
+        #[allow(dead_code)]
+        secret: Dynamic<String>,
+    }
+
+    let json = r#"{"secret": "hunter2"}"#;
+
+    let err = serde_json::from_str::<Wrapper>(json).expect_err("Deserialization should fail");
+
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Deserialization of Dynamic<T> is intentionally disabled")
+            || msg.contains("Dynamic<T> is intentionally disabled"),
+        "Error message should explain security rationale. Got: {msg}"
+    );
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn fixed_can_be_deserialized() {
+    fixed_alias!(Key32, 32);
+
+    // Proper JSON array of 32 zeros
+    let json = r#"[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]"#;
+
+    let key: Key32 = serde_json::from_str(json).unwrap();
+    assert_eq!(key.len(), 32);
+    assert_eq!(key.0, [0u8; 32]);
+}

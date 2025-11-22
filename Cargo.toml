@@ -22,6 +22,5 @@ serde_json = "1.0"
 
 [features]
 default = ["zeroize"]
-# zeroize = ["dep:zeroize", "dep:secrecy", "zeroize/zeroize_derive"]
 zeroize = ["dep:zeroize", "dep:secrecy"]
 serde = ["dep:serde"]
