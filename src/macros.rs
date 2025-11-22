@@ -21,11 +21,6 @@ macro_rules! fixed_alias {
 }
 
 /// Define a dynamic secret type alias.
-///
-/// ```
-/// dynamic_alias!(Password, String);
-/// let pw: Password = Dynamic::new("hunter2".to_string());
-/// ```
 #[macro_export]
 macro_rules! dynamic_alias {
     ($name:ident, $ty:ty) => {

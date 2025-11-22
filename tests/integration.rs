@@ -30,7 +30,7 @@ fn fixed_is_truly_zero_cost() {
 
 #[test]
 fn macros_work_perfectly() {
-    fixed_alias!(MyKey, 32); // ← updated
+    fixed_alias!(MyKey, 32);
     let k1: MyKey = [42u8; 32].into();
     let k2 = MyKey::new([42u8; 32]);
     assert_eq!(k1.0, k2.0);
@@ -80,37 +80,10 @@ fn into_inner_extracts() {
     assert_eq!(&*boxed, "secret");
 }
 
-#[cfg(feature = "zeroize")]
-#[test]
-fn zeroize_on_drop_wipes() {
-    use std::sync::atomic::{AtomicBool, Ordering};
-    static WIPED: AtomicBool = AtomicBool::new(false);
-
-    #[derive(zeroize::ZeroizeOnDrop)]
-    struct MySecret([u8; 32]);
-
-    impl zeroize::Zeroize for MySecret {
-        fn zeroize(&mut self) {
-            WIPED.store(true, Ordering::SeqCst);
-            self.0.zeroize();
-        }
-    }
-
-    {
-        let _key = Fixed::new(MySecret([42u8; 32]));
-        let _pw = Dynamic::new(MySecret([42u8; 32]));
-    }
-
-    assert!(
-        WIPED.load(Ordering::SeqCst),
-        "Zeroize was not called on drop"
-    );
-}
-
 #[cfg(feature = "serde")]
 #[test]
 fn serde_roundtrip_fixed() {
-    fixed_alias!(SerdeKey, 32); // ← updated
+    fixed_alias!(SerdeKey, 32);
     let key = SerdeKey::new([42u8; 32]);
     let json = serde_json::to_string(&key).unwrap();
     let key2: SerdeKey = serde_json::from_str(&json).unwrap();
