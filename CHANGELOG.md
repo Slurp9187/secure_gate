@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - True zero-cost for fixed-size secrets when `zeroize` off (no heap allocation).
 - `Deref` / `DerefMut` ergonomics — secrets borrow like normal types.
-- `secure!` and `fixed_secret!` macros for constructors and aliases.
+- `secure!` and `fixed_alias!` macros for constructors and aliases.
 - `into_inner()` for extraction.
 - `finish_mut()` with `shrink_to_fit` for `Dynamic<String>` / `Vec<u8>`.
 - `Clone` for `Dynamic<T>`.
