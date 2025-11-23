@@ -10,13 +10,13 @@ Zero-cost, `no_std`-compatible wrappers for handling sensitive data in memory.
 
 ```toml
 [dependencies]
-secure-gate = "0.5.2"
+secure-gate = "0.5.3"
 ```
 
 With automatic zeroing (recommended for most use cases):
 
 ```toml
-secure-gate = { version = "0.5.2", features = ["zeroize"] }
+secure-gate = { version = "0.5.3", features = ["zeroize"] }
 ```
 
 ## Features
@@ -113,7 +113,7 @@ Measured with Criterion 0.5 under real-world load (including Windows Update chec
 
 Even under background load, overhead is **< 0.1 CPU cycles** — indistinguishable from raw arrays.
 
-[Full interactive report →](https://slurp9187.github.io/secure_gate/benches/fixed_vs_raw/report/)
+[View full interactive report](https://slurp9187.github.io/secure_gate/benches/fixed_vs_raw/report/)
 
 ## Migration from v0.4.x
 

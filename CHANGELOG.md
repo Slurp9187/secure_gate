@@ -5,6 +5,17 @@ All changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),  
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2025-11-24
+
+### Changed
+- Documentation polish & real-world proof
+  - Added live Criterion benchmark report showing **zero overhead** on real hardware
+  - Updated all examples and links to reflect final v0.5.x API
+  - Changelog link now absolute (fixes broken link on docs.rs)
+
+### Fixed
+- Relative `CHANGELOG.md` link in README now points to the correct file on GitHub
+
 ## [0.5.2] - 2025-11-24
 
 ### Added
