@@ -1,164 +1,104 @@
 # secure-gate
 
-Zero-cost, `no_std`-compatible secure wrappers for secrets — stack for fixed-size, heap for dynamic.
+Zero-cost, `no_std`-compatible wrappers for handling sensitive data in memory.
 
-## Features
-
-| Feature  | Effect |
-|----------|--------|
-| `zeroize` | Enables wiping + auto-drop zeroing (on by default) |
-| `serde`  | Serialization support |
-
-- `no_std` + `alloc` compatible.
-- Redacted `Debug`.
-- Test coverage includes zero-cost, wiping, ergonomics, serde, macros.
-
-**Memory Safety Guarantees (when `zeroize` enabled)**:
-- Fixed-size secrets (`Fixed<T>`) use `zeroize::Zeroizing<T>` — stack-allocated, auto-zeroed.
-- Dynamic secrets (`Dynamic<T>`) use `secrecy::SecretBox<T>` — heap-allocated, leak-resistant.
-- On drop or `zeroize()`, `Vec<u8>` and `String` secrets are **completely deallocated** (not just zeroed).
-  - Verified via unsafe inspection: capacity drops to 0, buffer is freed.
-  - Stronger than full-capacity wiping — no slack memory remains.
-
-**Internal Usage of Dependencies**:
-- `Fixed<T>` uses `zeroize::Zeroizing<T>` for stack-allocated, auto-zeroing fixed-size secrets.
-- `Dynamic<T>` uses `secrecy::SecretBox<T>` for heap-allocated, leak-protected dynamic secrets.
-- Both forward `ZeroizeOnDrop` and `Zeroize` for seamless integration.
-
-## Fuzzing Configuration
-
-| Target    | Description                                      | Runtime per CI run |
-|-----------|--------------------------------------------------|--------------------|
-| `clone`   | `init_with`, `into_inner`, scoped zeroization    | 60 minutes         |
-| `expose`  | Memory access + `finish_mut`                     | 60 minutes         |
-| `mut`     | Unbounded `expose_mut()` mutation stress         | 60 minutes         |
-| `parsing` | `FromStr` parsing                                | 60 minutes         |
-| `serde`   | JSON + bincode deserialization from untrusted input | 60 minutes      |
-
-- 5 libFuzzer targets
-- 240 CPU minutes per nightly run
-- Runs on GitHub Actions (ubuntu-latest, nightly toolchain)
-- Artifacts uploaded on every run
+- `Fixed<T>` – stack-allocated, zero-cost wrapper.
+- `Dynamic<T>` – heap-allocated wrapper that forwards to the inner type.
+- When the `zeroize` feature is enabled, `FixedZeroizing<T>` and `DynamicZeroizing<T>` provide automatic zeroing on drop.
 
 ## Installation
 
 ```toml
 [dependencies]
-secure-gate = "0.5.0"
+secure-gate = "0.5.1"
 ```
 
-With serde:
+With automatic zeroing (recommended for most use cases):
+
 ```toml
-secure-gate = { version = "0.5.0", features = ["serde"] }
+secure-gate = { version = "0.5.1", features = ["zeroize"] }
 ```
+
+## Features
+
+| Feature   | Description                                            |
+|-----------|--------------------------------------------------------|
+| `zeroize` | Enables `zeroize` integration (`Zeroizing`, `SecretBox`) |
+| `serde`   | Optional serialization support                         |
+| `alloc`   | Required for `Dynamic<T>` (enabled by default)         |
+| `std`     | Not required – works in `no_std` environments          |
 
 ## Quick Start
 
 ```rust
-use secure_gate::{Fixed, Dynamic, secure, fixed_alias};
+use secure_gate::{secure, fixed_alias, dynamic_alias};
 
-// Fixed-size key (stack when zeroize off)
+// Type aliases
 fixed_alias!(Aes256Key, 32);
-let key: Aes256Key = [0u8; 32].into();
+fixed_alias!(Nonce12, 12);
+dynamic_alias!(Password, String);
 
-assert_eq!(key.len(), 32);
-key[0] = 1;  // DerefMut
+// Construction
+let key: Aes256Key = secure!([u8; 32], rng.gen());
+let nonce: Nonce12 = secure!([u8; 12], rng.gen());
 
-// Dynamic password (heap, full protection)
-let mut pw = Dynamic::<String>::new("hunter2".to_string());
+let mut password: Password = secure!(String, "hunter2".to_string());
+password.push('!');
+password.finish_mut(); // shrink_to_fit() on String/Vec<u8>
 
-assert_eq!(pw.len(), 7);
-assert_eq!(&*pw, "hunter2");  // Deref
+// Auto-zeroing variants
+let temp_key = secure_gate::secure_zeroizing!([u8; 32], derive_key());
+let secret_vec = secure_gate::secure_zeroizing!(heap Vec<u8>, secret_bytes);
+```
 
-pw.push('!');
-pw.finish_mut();  // shrink_to_fit
+## Memory Guarantees (`zeroize` feature enabled)
 
-// Macros
-let iv = secure!([u8; 16], [1u8; 16]);
-assert_eq!(iv.0, [1u8; 16]);
+| Type                     | Allocation | Auto-zero on drop | Full capacity wiped | Slack memory eliminated | Notes |
+|--------------------------|------------|-------------------|---------------------|--------------------------|-------|
+| `Fixed<T>`               | Stack      | Yes (via `Zeroizing`) | Yes             | Yes (no heap)            | No allocation |
+| `Dynamic<T>`             | Heap       | Yes (via `SecretBox`) | Yes             | No (until drop)          | Use `finish_mut()` to shrink |
+| `FixedZeroizing<T>`      | Stack      | Yes                | Yes             | Yes                      | RAII wrapper |
+| `DynamicZeroizing<T>`    | Heap       | Yes                | Yes             | No (until drop)          | `SecretBox` prevents copies |
 
-// Extraction
-let extracted = key.into_inner();
-assert_eq!(extracted, [1u8; 32]);
+- All zeroing uses `zeroize::Zeroize` (volatile writes + compiler fence).
+- `Vec<u8>` and `String` have their full current capacity zeroed and are truncated to length zero.
+- The underlying allocation is freed on drop (standard Rust behaviour); capacity is not forcibly reduced to zero unless `finish_mut()` / `shrink_to_fit()` is called.
+- Past reallocations may leave copies of data elsewhere in memory. Pre-allocate with the final expected size to avoid reallocations.
+
+## Macros
+
+```rust
+secure!([u8; 32], rng.gen())           // Fixed<[u8; 32]>
+secure!(String, "pw".into())           // Dynamic<String>
+secure!(Vec<u8>, data.to_vec())        // Dynamic<Vec<u8>>
+
+secure_zeroizing!([u8; 32], key)       // FixedZeroizing<[u8; 32]>
+secure_zeroizing!(heap Vec<u8>, data)  // DynamicZeroizing<Vec<u8>>
+
+fixed_alias!(MyKey, 32)
+dynamic_alias!(MySecret, Vec<u8>)
 ```
 
 ## Example Aliases
 
-Use `fixed_alias!` for fixed-size types and `dynamic_alias!` for dynamic types. These generate self-documenting aliases.
-
-### Fixed-Size (Stack-Optimized)
-
 ```rust
-use secure_gate::fixed_alias;
-
-// Crypto keys
+fixed_alias!(Aes128Key, 16);
 fixed_alias!(Aes256Key, 32);
-fixed_alias!(HmacSha256Key, 32);
-fixed_alias!(X25519SecretKey, 32);
-
-// Nonces and IVs
-fixed_alias!(AesGcmIv12, 12);
-fixed_alias!(AesCbcIv16, 16);
-fixed_alias!(ChaCha20Nonce12, 12);
-fixed_alias!(XChaCha20Nonce24, 24);
-
-// Salts
-fixed_alias!(Salt16, 16);
-
-// Usage
-let key: Aes256Key = [0u8; 32].into();
-let iv = AesGcmIv12::new(rand::random::<[u8; 12]>());
-```
-
-### Dynamic-Size (Heap-Optimized)
-
-```rust
-use secure_gate::dynamic_alias;
-
-// Strings and passwords
+fixed_alias!(XChaCha20Nonce, 24);
 dynamic_alias!(Password, String);
-dynamic_alias!(JwtSecret, String);
-
-// Byte vectors
-dynamic_alias!(Token, Vec<u8>);
-dynamic_alias!(Payload, Vec<u8>);
-
-// Usage
-let pw: Password = Dynamic::new("hunter2".to_string());
-let token: Token = Dynamic::new_boxed(Box::new(vec![0u8; 32]));
-
-assert_eq!(pw.len(), 7);
-pw.push('!');  // DerefMut
-assert_eq!(&*pw, "hunter2!");
+dynamic_alias!(JwtSigningKey, Vec<u8>);
 ```
 
-## Migration from v0.4.3
+## Migration from v0.4.x
 
-v0.5.0 is a clean break from v0.4.3's experimental API.
-
-- `SecureGate<T>` → `Fixed<T>` (fixed-size) or `Dynamic<T>` (dynamic).
-- `ZeroizeMode` / `new_full_wipe` → Removed; `zeroize` handles wiping.
-- `SecurePassword` → `Dynamic<String>`.
-- `expose_secret()` → `Deref` (e.g., `&*secret`).
-- `unsafe-wipe` → Removed; safe by default.
-
-Example migration:
-```rust
-// v0.4.3
-let pw: SecurePassword = "hunter2".into();
-pw.expose_secret_mut().push('!');
-
-// v0.5.0
-let mut pw = Dynamic::<String>::new("hunter2".to_string());
-pw.push('!');
-```
-
-All v0.4.3 code breaks — this is intentional for the clean redesign.
+- `SecureGate<T>` → `Fixed<T>` (stack) or `Dynamic<T>` (heap)
+- `.expose_secret()` → direct deref (`&*value` or `&mut *value`)
+- Automatic zeroing → `FixedZeroizing<T>` or `DynamicZeroizing<T>`
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for full history.
+See [CHANGELOG.md](CHANGELOG.md)
 
 ## License
 
-Dual-licensed under MIT OR Apache-2.0, at your option.
+MIT OR Apache-2.0

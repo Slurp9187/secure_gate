@@ -1,5 +1,5 @@
 // src/lib.rs
-// secure-gate v0.5.0 — The Final Form
+// secure-gate v0.5.1
 
 #![cfg_attr(not(feature = "zeroize"), forbid(unsafe_code))]
 extern crate alloc;
@@ -19,10 +19,17 @@ mod serde;
 
 // Public API
 pub use dynamic::Dynamic;
-pub use fixed::Fixed;
-
 pub use expose::{Expose, ExposeMut};
+pub use fixed::Fixed;
 
 // Zeroize integration (opt-in)
 #[cfg(feature = "zeroize")]
 pub use zeroize::{DynamicZeroizing, FixedZeroizing};
+
+// Re-export Zeroizing cleanly — no privacy conflict
+#[cfg(feature = "zeroize")]
+pub type Zeroizing<T> = ::zeroize::Zeroizing<T>;
+
+// Re-export the trait and marker directly from the zeroize crate
+#[cfg(feature = "zeroize")]
+pub use ::zeroize::{Zeroize, ZeroizeOnDrop};

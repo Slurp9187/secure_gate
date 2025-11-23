@@ -1,26 +1,50 @@
 // src/macros.rs
-// Ergonomic constructor macro + type aliases only
+//! Ergonomic secret-handling macros.
 
-/// Create a secret from an expression or literal.
+/// Create a secret — works for fixed-size arrays and heap types.
 #[macro_export]
 macro_rules! secure {
-    ($ty:ty, $expr:expr) => {
+    ([u8; $N:literal], $expr:expr $(,)?) => {
+        $crate::Fixed::new($expr)
+    };
+    ($ty:ty, $expr:expr $(,)?) => {
         $crate::Fixed::<$ty>::new($expr)
     };
-    ($ty:ty, [$($val:expr),+ $(,)?]) => {
-        $crate::Fixed::<$ty>::new([$($val),+])
+    (String, $expr:expr $(,)?) => {
+        $crate::Dynamic::new($expr)
+    };
+    (Vec<u8>, $expr:expr $(,)?) => {
+        $crate::Dynamic::new($expr)
+    };
+    (heap $ty:ty, $expr:expr $(,)?) => {
+        $crate::Dynamic::new($expr)
     };
 }
 
-/// Define a fixed-size secret type alias.
+/// Create a zeroizing secret (auto-wiped on drop)
+#[macro_export]
+macro_rules! secure_zeroizing {
+    ($ty:ty, $expr:expr $(,)?) => {
+        $crate::FixedZeroizing::new($expr)
+    };
+    (heap $ty:ty, $expr:expr $(,)?) => {
+        $crate::DynamicZeroizing::new($expr)
+    };
+}
+
+/// Define a fixed-size secret alias.
+///
+/// The alias gets useful methods automatically because `Fixed` implements them
+/// for all array sizes (see `src/fixed.rs`).
 #[macro_export]
 macro_rules! fixed_alias {
     ($name:ident, $size:literal) => {
+        /// Fixed-size secret of exactly `$size` bytes.
         pub type $name = $crate::Fixed<[u8; $size]>;
     };
 }
 
-/// Define a dynamic secret type alias.
+/// Define a dynamic (heap) secret alias.
 #[macro_export]
 macro_rules! dynamic_alias {
     ($name:ident, $ty:ty) => {

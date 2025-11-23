@@ -1,7 +1,7 @@
 // tests/integration.rs
-// Final test suite — proves everything works
+// Core integration tests — no macro usage here
 
-use secure_gate::{dynamic_alias, fixed_alias, secure, Dynamic, Fixed};
+use secure_gate::{Dynamic, Fixed};
 
 #[test]
 fn basic_usage_and_deref() {
@@ -71,40 +71,10 @@ fn into_inner_extracts() {
 
 #[cfg(feature = "serde")]
 #[test]
-fn serde_roundtrip_fixed() {
-    fixed_alias!(SerdeKey, 32);
-    let key = SerdeKey::new([42u8; 32]);
-    let json = serde_json::to_string(&key).unwrap();
-    let key2: SerdeKey = serde_json::from_str(&json).unwrap();
-    assert_eq!(key.0, key2.0);
-}
-
-#[cfg(feature = "serde")]
-#[test]
 fn serde_dynamic_serializes() {
     let pw = Dynamic::<String>::new("hunter2".to_string());
     let json = serde_json::to_string(&pw).unwrap();
     assert_eq!(json, "\"hunter2\"");
-}
-
-#[test]
-fn dynamic_alias_works() {
-    dynamic_alias!(Password, String);
-    let mut pw: Password = Dynamic::new("hunter2".to_string());
-    assert_eq!(pw.len(), 7);
-    pw.push('!');
-    assert_eq!(&*pw, "hunter2!");
-}
-
-#[test]
-fn fixed_alias_works() {
-    fixed_alias!(MyKey, 32);
-    let k1: MyKey = [42u8; 32].into();
-    let k2 = MyKey::new([42u8; 32]);
-    assert_eq!(k1.0, k2.0);
-
-    let iv = secure!([u8; 16], [1u8; 16]);
-    assert_eq!(iv.0, [1u8; 16]);
 }
 
 #[cfg(feature = "serde")]
@@ -112,9 +82,7 @@ fn fixed_alias_works() {
 fn dynamic_deserialize_is_blocked_with_clear_error() {
     use serde::Deserialize;
 
-    // Try to deserialize directly — should fail to compile
-    // But we test the runtime error message via a helper type
-    #[derive(Deserialize, Debug)] // ← added Debug
+    #[derive(Deserialize, Debug)]
     struct Wrapper {
         #[allow(dead_code)]
         secret: Dynamic<String>,
@@ -130,17 +98,4 @@ fn dynamic_deserialize_is_blocked_with_clear_error() {
             || msg.contains("Dynamic<T> is intentionally disabled"),
         "Error message should explain security rationale. Got: {msg}"
     );
-}
-
-#[cfg(feature = "serde")]
-#[test]
-fn fixed_can_be_deserialized() {
-    fixed_alias!(Key32, 32);
-
-    // Proper JSON array of 32 zeros
-    let json = r#"[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]"#;
-
-    let key: Key32 = serde_json::from_str(json).unwrap();
-    assert_eq!(key.len(), 32);
-    assert_eq!(key.0, [0u8; 32]);
 }

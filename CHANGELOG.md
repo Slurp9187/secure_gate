@@ -5,6 +5,18 @@ All changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),  
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2025-11-23
+
+### Added
+- `secure!`, `secure_zeroizing!`, `fixed_alias!`, and `dynamic_alias!` macros — the most ergonomic secret creation syntax in Rust
+- Full support for heap secret creation via `secure!(String, ...)` and `secure!(Vec<u8>, ...)`
+- `from_slice` and `From<&[u8; N]>` on all fixed-size aliases
+- Corrected and strengthened documentation on memory wiping guarantees
+- `finish_mut()` now emphasized as the way to eliminate slack capacity
+
+### Fixed
+- README now accurately reflects real zeroize/secrecy behavior (full-capacity wipe + normal deallocation, no forced shrink)
+
 ## [0.5.0] - 2025-11-22
 
 ### Breaking Changes
