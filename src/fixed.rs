@@ -27,6 +27,20 @@ impl<T> DerefMut for Fixed<T> {
     }
 }
 
+impl<const N: usize> AsRef<[u8]> for Fixed<[u8; N]> {
+    #[inline(always)]
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl<const N: usize> AsMut<[u8]> for Fixed<[u8; N]> {
+    #[inline(always)]
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.0
+    }
+}
+
 impl<T> core::fmt::Debug for Fixed<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str("[REDACTED]")

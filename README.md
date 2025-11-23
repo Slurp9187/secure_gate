@@ -10,13 +10,13 @@ Zero-cost, `no_std`-compatible wrappers for handling sensitive data in memory.
 
 ```toml
 [dependencies]
-secure-gate = "0.5.3"
+secure-gate = "0.5.4"
 ```
 
 With automatic zeroing (recommended for most use cases):
 
 ```toml
-secure-gate = { version = "0.5.3", features = ["zeroize"] }
+secure-gate = { version = "0.5.4", features = ["zeroize"] }
 ```
 
 ## Features
@@ -38,14 +38,21 @@ fixed_alias!(Aes256Key, 32);
 fixed_alias!(Nonce12, 12);
 dynamic_alias!(Password, String);
 
-// Construction
-let key = Aes256Key::from(rng.gen());           // clean and explicit
+// Construction — idiomatic and zero-cost
+let key = Aes256Key::from(rng.gen());           // explicit
 let key2: Aes256Key = rng.gen().into();         // natural .into()
-let key3 = Aes256Key::new(rng.gen());           // classic style
+let key3 = Aes256Key::new(rng.gen());           // classic
 
 let nonce = Nonce12::from(rng.gen());
 let nonce2: Nonce12 = rng.gen().into();
 
+// New in 0.5.4: direct slice conversion (zero-cost!)
+let key_slice: &[u8] = key.as_ref();            // Immutable slice
+let mut key_mut: &mut [u8] = key.as_mut();      // Mutable slice
+key_mut[0] = 0xFF;                              // e.g. key scheduling, HKDF, etc.
+assert_eq!(key[0], 0xFF);
+
+// Heap-based secrets
 let mut password: Password = secure!(String, "hunter2".to_string());
 password.push('!');
 password.finish_mut(); // shrink_to_fit() on String/Vec<u8>

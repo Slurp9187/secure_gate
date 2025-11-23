@@ -99,3 +99,15 @@ fn dynamic_deserialize_is_blocked_with_clear_error() {
         "Error message should explain security rationale. Got: {msg}"
     );
 }
+
+#[test]
+fn fixed_as_ref_as_mut() {
+    let mut key = Fixed::new([42u8; 32]);
+    let slice: &[u8] = key.as_ref();
+    assert_eq!(slice.len(), 32);
+    assert_eq!(slice[0], 42);
+
+    let mut_slice: &mut [u8] = key.as_mut();
+    mut_slice[0] = 99;
+    assert_eq!(key[0], 99);
+}
