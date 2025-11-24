@@ -125,7 +125,7 @@ Measured with Criterion 0.5 under real-world load (including Windows Update chec
 
 Even under background load, overhead is **< 0.1 CPU cycles** — indistinguishable from raw arrays.
 
-[View full interactive report](https://slurp9187.github.io/secure_gate/benches/fixed_vs_raw/report/)
+[View full interactive report](https://slurp9187.github.io/secure-gate/benches/fixed_vs_raw/report/)
 
 ## Migration from v0.4.x
 
@@ -138,7 +138,7 @@ Even under background load, overhead is **< 0.1 CPU cycles** — indistinguishab
 
 ## Changelog
 
-See [CHANGELOG.md](https://github.com/Slurp9187/secure_gate/blob/main/CHANGELOG.md)
+See [CHANGELOG.md](https://github.com/Slurp9187/secure-gate/blob/main/CHANGELOG.md)
 
 ## License
 
