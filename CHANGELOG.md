@@ -5,6 +5,20 @@ All changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),  
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.5] - 2025-08-10
+
+### Changed
+- **API: `view()` / `view_mut()` → `expose_secret()` / `expose_secret_mut()`**  
+  The old `.view()` and `.view_mut()` methods are now **deprecated** and forward directly to the new canonical API:
+  ```rust
+  // Old (deprecated in 0.5.5, removed in 0.6.0)
+  key.view()           // → &T
+  key.view_mut()       // → &mut T
+
+  // New — recommended
+  key.expose_secret()      // → &T
+  key.expose_secret_mut()  // → &mut T
+
 ## [0.5.4] - 2025-11-23
 
 ### Added

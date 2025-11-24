@@ -10,13 +10,13 @@ Zero-cost, `no_std`-compatible wrappers for handling sensitive data in memory.
 
 ```toml
 [dependencies]
-secure-gate = "0.5.4"
+secure-gate = "0.5.5"
 ```
 
 With automatic zeroing (recommended for most use cases):
 
 ```toml
-secure-gate = { version = "0.5.4", features = ["zeroize"] }
+secure-gate = { version = "0.5.5", features = ["zeroize"] }
 ```
 
 ## Features
@@ -46,16 +46,21 @@ let key3 = Aes256Key::new(rng.gen());           // classic
 let nonce = Nonce12::from(rng.gen());
 let nonce2: Nonce12 = rng.gen().into();
 
-// New in 0.5.4: direct slice conversion (zero-cost!)
-let key_slice: &[u8] = key.as_ref();            // Immutable slice
-let mut key_mut: &mut [u8] = key.as_mut();      // Mutable slice
-key_mut[0] = 0xFF;                              // e.g. key scheduling, HKDF, etc.
+// Access the secret — loud, clear, and zero-cost
+let key_bytes: &[u8] = key.expose_secret();
+let key_bytes_mut: &mut [u8] = key.expose_secret_mut();
+key_bytes_mut[0] = 0xFF;                         // e.g. key scheduling, HKDF, etc.
 assert_eq!(key[0], 0xFF);
 
 // Heap-based secrets
 let mut password: Password = secure!(String, "hunter2".to_string());
 password.push('!');
 password.finish_mut(); // shrink_to_fit() on String/Vec<u8>
+
+// Access the secret directly
+let pw_str: &str = password.expose_secret();
+let pw_str_mut: &mut str = password.expose_secret_mut().as_mut_str();
+pw_str_mut.push('!');
 
 // Auto-zeroing variants (requires `zeroize` feature)
 let temp_key = secure_gate::secure_zeroizing!([u8; 32], derive_key());
@@ -125,8 +130,11 @@ Even under background load, overhead is **< 0.1 CPU cycles** — indistinguishab
 ## Migration from v0.4.x
 
 - `SecureGate<T>` → `Fixed<T>` (stack) or `Dynamic<T>` (heap)
-- `.expose_secret()` → direct deref (`&*value` or `&mut *value`) for `Fixed`/`Dynamic`
+- `.expose_secret()` → `value.expose_secret()` (returns `&T`)
+- `.expose_secret_mut()` → `value.expose_secret_mut()` (returns `&mut T`)
 - Automatic zeroing → `FixedZeroizing<T>` or `DynamicZeroizing<T>` (with `zeroize` feature)
+
+**Note**: `.view()` and `.view_mut()` are deprecated in v0.5.5 and will be removed in v0.6.0.
 
 ## Changelog
 
