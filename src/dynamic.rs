@@ -94,12 +94,13 @@ impl<T: ?Sized> Dynamic<T> {
 
 // Clone impls
 #[cfg(not(feature = "zeroize"))]
-impl<T: Clone + ?Sized> Clone for Dynamic<T> {
+impl<T: Clone> Clone for Dynamic<T> {
     #[inline(always)]
     fn clone(&self) -> Self {
         Dynamic(self.0.clone())
     }
 }
+
 #[cfg(feature = "zeroize")]
 impl<T: Clone + zeroize::Zeroize> Clone for Dynamic<T> {
     #[inline(always)]
