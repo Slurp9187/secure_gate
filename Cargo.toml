@@ -10,6 +10,7 @@ keywords = ["crypto", "no-std", "security", "zeroize"]
 categories = ["cryptography", "no-std", "data-structures"]
 
 [dependencies]
+rand = { version = "0.9", optional = true, features = ["std", "os_rng"] }
 secrecy = { version = "0.10", default-features = false, optional = true }
 zeroize = { version = "1.8", default-features = false, optional = true, features = [
   "alloc",
@@ -25,6 +26,7 @@ criterion = { version = "0.5", features = ["html_reports"] }
 default = ["zeroize"]
 zeroize = ["dep:zeroize", "dep:secrecy"]
 serde = ["dep:serde"]
+rand = ["dep:rand"]
 
 [[bench]]
 name = "fixed_vs_raw"

@@ -61,3 +61,9 @@ pub type Zeroizing<T> = ::zeroize::Zeroizing<T>;
 // Re-export the trait and marker directly from the zeroize crate
 #[cfg(feature = "zeroize")]
 pub use ::zeroize::{Zeroize, ZeroizeOnDrop};
+
+// lib.rs
+#[cfg(feature = "rand")]
+pub mod rng;
+#[cfg(feature = "rand")]
+pub use rng::SecureRandomExt;
