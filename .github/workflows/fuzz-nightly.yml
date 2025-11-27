@@ -92,6 +92,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: fuzz
     if: success() || failure()
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -108,7 +109,10 @@ jobs:
       - name: Add LLVM tools to PATH
         shell: bash
         run: |
-          LLVM_PATH="$(rustup which --toolchain nightly llvm-cov | xargs dirname)"
+          SYSROOT="$(rustc +nightly --print sysroot)"
+          HOST="$(rustc +nightly -vV | sed -n 's/^host: //p')"
+          LLVM_PATH="$SYSROOT/lib/rustlib/$HOST/bin"
+          echo "Using LLVM tools from: $LLVM_PATH"
           echo "$LLVM_PATH" >> "$GITHUB_PATH"
 
       - name: Cache
