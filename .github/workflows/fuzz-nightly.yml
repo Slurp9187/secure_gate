@@ -45,9 +45,6 @@ jobs:
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz
 
-      # --------------------------------------------------
-      # CRITICAL: Load previous corpora (if any exist)
-      # --------------------------------------------------
       - name: Download previous corpora
         uses: actions/download-artifact@v4
         continue-on-error: true
@@ -56,9 +53,6 @@ jobs:
           path: fuzz/corpus/
           merge-multiple: true
 
-      # --------------------------------------------------
-      # CRITICAL: Seed minimal corpus if still empty
-      # --------------------------------------------------
       - name: Seed minimal corpus (prevents instant exit)
         run: |
           mkdir -p fuzz/corpus/{clone,expose,mut,parsing,serde,zeroizing}
@@ -69,26 +63,18 @@ jobs:
               printf '\\x00\\x00\\x00\\x00' > "$dir/seed_zero"
               printf '\\xff\\xff\\xff\\xff' > "$dir/seed_ff"
               printf 'A%.0s' {1..2000}  > "$dir/seed_long"
-              # A few random-ish bytes for variety
               head -c 500 /dev/urandom  > "$dir/seed_random"
             fi
           done
 
-      # --------------------------------------------------
-      # Run the actual long fuzzing session
-      # --------------------------------------------------
       - name: Fuzz – ${{ matrix.target }} (${{ matrix.mode }})
         env:
-          # Enable sanitizers only for the "asan" matrix entry
           RUSTFLAGS: ${{ matrix.mode == 'asan' && '-Zsanitizer=address -Zsanitizer=leak -Cdebuginfo=2' || '' }}
           ASAN_OPTIONS: detect_leaks=1 abort_on_error=1 symbolize=1 allocator_may_return_null=1
         run: |
           echo "Starting 58-minute fuzz run for ${{ matrix.target }} (${{ matrix.mode }})"
           cargo +nightly fuzz run ${{ matrix.target }} $FUZZER_ARGS
 
-      # --------------------------------------------------
-      # ALWAYS upload the grown corpus (even on timeout/cancel)
-      # --------------------------------------------------
       - name: Upload grown corpus
         if: always()
         uses: actions/upload-artifact@v4
@@ -98,9 +84,6 @@ jobs:
           retention-days: 60
           if-no-files-found: error
 
-      # --------------------------------------------------
-      # Upload crashes (if any were found)
-      # --------------------------------------------------
       - name: Upload crash artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -110,10 +93,6 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
-  # --------------------------------------------------------------
-  # 2. Optional: Generate coverage reports from the new corpora
-  # (runs after all fuzz jobs finish)
-  # --------------------------------------------------------------
   coverage:
     name: Fuzz Coverage Report
     runs-on: ubuntu-latest
@@ -143,14 +122,17 @@ jobs:
         with:
           pattern: fuzz-corpus-*
           path: fuzz/corpus/
-          merge-multiple: true
+          merge-multiple: false   # IMPORTANT: False to preserve per-target dirs
 
       - name: Generate HTML + lcov coverage
         run: |
           mkdir -p coverage/html coverage/lcov
           for target in clone expose mut parsing serde zeroizing; do
-            corpus_dir="fuzz/corpus/$target"
-            if [ ! -d "$corpus_dir" ] || [ -z "$(ls -A "$corpus_dir")" ]; then
+            # Find the normal-mode corpus dir (e.g., fuzz-corpus-clone-normal-*)
+            corpus_dir=$(find fuzz/corpus -type d -name "fuzz-corpus-$target-normal-*" -print -quit)
+            echo "Corpus dir for $target: $corpus_dir"
+
+            if [ -z "$corpus_dir" ] || [ -z "$(ls -A "$corpus_dir")" ]; then
               echo "No corpus for $target, skipping coverage"
               continue
             fi
