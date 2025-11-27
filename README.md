@@ -10,13 +10,19 @@ Zero-cost, `no_std`-compatible wrappers for handling sensitive data in memory.
 
 ```toml
 [dependencies]
-secure-gate = "0.5.6"
+secure-gate = "0.5.7"
 ```
 
-With automatic zeroing (recommended for most use cases):
+With automatic zeroing (recommended):
 
 ```toml
-secure-gate = { version = "0.5.6", features = ["zeroize"] }
+secure-gate = { version = "0.5.7", features = ["zeroize"] }
+```
+
+With secure random generation (`OsRng`):
+
+```toml
+secure-gate = { version = "0.5.7", features = ["zeroize", "rand"] }
 ```
 
 ## Features
@@ -24,6 +30,7 @@ secure-gate = { version = "0.5.6", features = ["zeroize"] }
 | Feature   | Description                                            |
 |-----------|--------------------------------------------------------|
 | `zeroize` | Enables `zeroize` integration (`Zeroizing`, `SecretBox`) |
+| `rand`    | Enables `SecureRandomExt::random()` for `Fixed<[u8; N]>` types |
 | `serde`   | Optional serialization support                         |
 | `alloc`   | Required for `Dynamic<T>` (enabled by default)         |
 | `std`     | Not required – works in `no_std` environments          |
@@ -31,17 +38,20 @@ secure-gate = { version = "0.5.6", features = ["zeroize"] }
 ## Quick Start
 
 ```rust
-use secure_gate::{fixed_alias, dynamic_alias};
+use secure_gate::{fixed_alias, dynamic_alias, SecureRandomExt};
 
-// Beautiful type aliases
 fixed_alias!(Aes256Key, 32);
-fixed_alias!(Nonce12, 12);
+fixed_alias!(XChaCha20Nonce, 24);
 dynamic_alias!(Password, String);
 dynamic_alias!(JwtKey, Vec<u8>);
 
-// Fixed-size secrets — natural syntax
-let key: Aes256Key = rng.gen().into();      // The dream
-let nonce: Nonce12 = rng.gen().into();
+// Fixed-size secrets — perfect ergonomics
+let key: Aes256Key = rng.gen().into();           // From<[u8; 32]>
+let nonce: XChaCha20Nonce = rng.gen().into();
+
+// With the `rand` feature — the dream becomes reality
+let key = Aes256Key::random();        // cryptographically secure, zero-cost
+let nonce = XChaCha20Nonce::random();
 
 // Heap-based secrets — now just as beautiful!
 let pw: Password = "hunter2".into();                    // From<&str>
@@ -56,6 +66,22 @@ let temp_key: DynamicZeroizing<Vec<u8>> = vec![0u8; 32].into();
 let bytes: &[u8] = key.expose_secret();
 let pw_str: &str = pw.expose_secret();
 ```
+
+## Secure Random Generation (`rand` feature)
+
+```rust
+fixed_alias!(Aes128Key, 16);
+fixed_alias!(Aes256Key, 32);
+fixed_alias!(HmacKey, 64);
+
+let key = Aes256Key::random();     // thread-local OsRng, <80ns after first use
+let hmac_key = HmacKey::random();
+```
+
+- Powered by `rand::rngs::OsRng` via `TryRngCore::try_fill_bytes`
+- Thread-local, lazily initialized, no heap allocation
+- Panics on RNG failure (standard in high-assurance crypto)
+- Works with all `fixed_alias!` types
 
 ## Memory Guarantees (`zeroize` feature enabled)
 
@@ -98,7 +124,7 @@ dynamic_alias!(Password, String);
 dynamic_alias!(JwtSigningKey, Vec<u8>);
 
 // Usage — pure joy
-let key: Aes256Key = rng.gen().into();
+let key = Aes256Key::random();           // with `rand` feature
 let pw: Password = "hunter2".into();
 let jwt: JwtSigningKey = secret_bytes.into();
 ```

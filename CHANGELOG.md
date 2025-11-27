@@ -5,6 +5,25 @@ All changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),  
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.7] - 2025-11-27
+
+### Added
+- **New `rand` feature**: `SecureRandomExt::random()` for all `Fixed<[u8; N]>` and `fixed_alias!` types (#18)
+  ```rust
+  fixed_alias!(Aes256Key, 32);
+  fixed_alias!(XChaCha20Nonce, 24);
+
+  let key = Aes256Key::random();       // zero-cost, cryptographically secure
+  let nonce = XChaCha20Nonce::random();
+  ```
+  - Powered by thread-local `rand::rngs::OsRng` (lazy initialization)
+  - Uses modern `TryRngCore::try_fill_bytes` (rand 0.9+)
+  - No heap allocation, fully safe, `no_std`-compatible
+  - Panics on RNG failure (standard for high-assurance crypto code)
+  - Fully tested and Clippy-clean
+
+Closes #18
+
 ## [0.5.6] - 2025-04-05
 
 ### Added
@@ -21,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   // Zeroizing variants too!
   let pw: DynamicZeroizing<String> = "temp secret".into();
   let key: DynamicZeroizing<Vec<u8>> = vec![0u8; 32].into();
+  ```
 
 ## [0.5.5] - 2025-08-10
 
@@ -35,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   // New — recommended
   key.expose_secret()      // → &T
   key.expose_secret_mut()  // → &mut T
+  ```
 
 ## [0.5.4] - 2025-11-23
 
