@@ -22,7 +22,7 @@ jobs:
 
     env:
       # ~58 minutes of actual fuzzing per job
-      FUZZER_ARGS: "-- -fork=1 -timeout=60 -rss_limit_mb=8192 -runs=0 -max_total_time=3500"
+      FUZZER_ARGS: "-fork=1 -timeout=60 -rss_limit_mb=8192 -runs=0 -max_total_time=3500"
 
     steps:
       - name: Checkout repository
@@ -56,7 +56,7 @@ jobs:
             find fuzz/corpus-downloaded -type f -name "*$t*" -exec cp {} "fuzz/corpus/$t/" \; 2>/dev/null || true
           done
 
-      - name: Seed minimal corpus (first run safety net)
+      - name: Seed minimal corpus (first-run safety net)
         run: |
           for t in clone expose mut parsing serde zeroizing; do
             dir="fuzz/corpus/$t"
@@ -77,11 +77,8 @@ jobs:
           echo "Fuzzing ${{ matrix.target }} (${{ matrix.mode }}) for ~58 minutes..."
           cargo +nightly fuzz run ${{ matrix.target }} \
             fuzz/corpus/${{ matrix.target }} \
-            -fork=1 \
-            -timeout=60 \
-            -rss_limit_mb=8192 \
-            -runs=0 \
-            -max_total_time=3500
+            -- \
+            ${{ env.FUZZER_ARGS }}
 
       - name: Upload grown corpus
         if: always()
@@ -154,7 +151,7 @@ jobs:
               continue
             fi
 
-            # Find the actual compiled binary (cargo-fuzz puts it in arch subdir)
+            # Find the compiled binary (cargo-fuzz puts it in an arch sub-directory)
             binary=$(find fuzz/target -type f -name "$target" -perm /a=x -print -quit 2>/dev/null || echo "")
             if [ -z "$binary" ]; then
               echo "Binary not found for $target"
@@ -162,16 +159,19 @@ jobs:
             fi
             echo "Using binary: $binary"
 
+            # Run coverage collection
             cargo +nightly fuzz coverage "$target" "$corpus_dir" -- -runs=200000
 
+            # HTML report
             llvm-cov show \
               --instr-profile="fuzz/coverage/$target/coverage.profdata" \
               --object="$binary" \
               --format=html \
               --ignore-filename-regex='/.cargo|/rustc/|.*/libfuzzer_sys/.*' \
               --output-dir="coverage/html/$target" \
-              || echo "llvm-cov failed for $target (continuing)"
+              || echo "llvm-cov HTML generation failed for $target (continuing)"
 
+            # lcov report (optional)
             cargo +nightly fuzz coverage "$target" "$corpus_dir" --lcov --output-path="coverage/lcov/$target.info" || true
           done
 
