@@ -22,6 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Panics on RNG failure (standard for high-assurance crypto code)
   - Fully tested and Clippy-clean
 
+### Documentation
+- **Complete rustdoc overhaul** (#14)
+  - Every public item now has clear, consistent, and fully-tested documentation
+  - All examples compile under `--all-features` and `--no-default-features`
+  - Added comprehensive module overviews, tables, security rationales, and idiomatic usage patterns
+  - 100% passing `cargo test --doc`
+  - Fixed all Clippy doc lint warnings
+
 ## [0.5.6] - 2025-04-05
 
 ### Added
