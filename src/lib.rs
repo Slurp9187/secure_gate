@@ -1,23 +1,27 @@
 // src/lib.rs
 //! # secure-gate: Zero-cost secure wrappers for secrets
 //!
-//! Provides safe, ergonomic handling of sensitive data in memory with zero runtime overhead.
+//! This crate provides safe, ergonomic wrappers for handling sensitive data in memory
+//! with zero runtime overhead. It supports both stack-allocated fixed-size secrets
+//! and heap-allocated dynamic secrets, with optional automatic zeroing on drop.
 //!
-//! - **Fixed&lt;T&gt;**: Stack-allocated for fixed-size secrets (e.g., keys, nonces)
-//! - **Dynamic&lt;T&gt;**: Heap-allocated for dynamic secrets (e.g., passwords, vectors)
-//! - **Zeroizing variants**: Automatic memory wiping on drop (with `zeroize` feature)
-//! - **Macros**: `fixed_alias!`, `dynamic_alias!`, `secure!`, `secure_zeroizing!` for beautiful syntax
+//! Key components:
+//! - [`Fixed<T>`]: Stack-allocated for fixed-size secrets (e.g., keys, nonces).
+//! - [`Dynamic<T>`]: Heap-allocated for dynamic secrets (e.g., passwords, vectors).
+//! - Zeroizing variants: [`FixedZeroizing<T>`] and [`DynamicZeroizing<T>`] for auto-wiping (with `zeroize` feature).
+//! - Macros: [`fixed_alias!`], [`dynamic_alias!`], [`secure!`], [`secure_zeroizing!`] for ergonomic usage.
 //!
 //! # Features
 //!
-//! - `zeroize`: Enables auto-wiping on drop
-//! - `serde`: Optional serialization support
-//! - Works in `no_std` + `alloc` environments
+//! - `zeroize`: Enables automatic memory wiping on drop via `zeroize` and `secrecy`.
+//! - `rand`: Enables [`SecureRandomExt::random()`] for generating fixed-size secrets.
+//! - `serde`: Optional serialization support (deserialization disabled for `Dynamic<T>` for security).
+//! - Works in `no_std` + `alloc` environments.
 //!
 //! # Quick Start
 //!
 //! ```
-//! use secure_gate::{Dynamic, Fixed, fixed_alias, dynamic_alias};
+//! use secure_gate::{dynamic_alias, fixed_alias, Dynamic, Fixed};
 //!
 //! fixed_alias!(Aes256Key, 32);
 //! dynamic_alias!(Password, String);
@@ -29,9 +33,10 @@
 //! assert_eq!(pw.expose_secret(), "hunter2");
 //! ```
 //!
-//! See individual modules for details.
+//! See individual modules for detailed documentation.
 
 #![cfg_attr(not(feature = "zeroize"), forbid(unsafe_code))]
+
 extern crate alloc;
 
 // Core modules
@@ -62,8 +67,9 @@ pub type Zeroizing<T> = ::zeroize::Zeroizing<T>;
 #[cfg(feature = "zeroize")]
 pub use ::zeroize::{Zeroize, ZeroizeOnDrop};
 
-// lib.rs
+// RNG integration (opt-in)
 #[cfg(feature = "rand")]
 pub mod rng;
+
 #[cfg(feature = "rand")]
 pub use rng::SecureRandomExt;
