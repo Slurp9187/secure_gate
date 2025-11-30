@@ -6,29 +6,29 @@ Zero-cost, `no_std`-compatible wrappers for handling sensitive data in memory.
 - `Dynamic<T>` – heap-allocated wrapper with full `.into()` ergonomics.
 - When the `zeroize` feature is enabled, `FixedZeroizing<T>` and `DynamicZeroizing<T>` provide automatic zeroing on drop.
 
-**Now with `conversions` — the most requested ergonomics upgrade ever.**
+**Now with `conversions` — safe, explicit, and still the most ergonomic secret conversions in Rust.**
 
 ## Installation
 
 ```toml
 [dependencies]
-secure-gate = "0.5.8"
+secure-gate = "0.5.9"
 ```
 
-Recommended (full power):
+Recommended (maximum safety + ergonomics):
 
 ```toml
-secure-gate = { version = "0.5.8", features = ["zeroize", "rand", "conversions"] }
+secure-gate = { version = "0.5.9", features = ["zeroize", "rand", "conversions"] }
 ```
 
 ## Features
 
-| Feature       | Description                                                                                     |
-|---------------|-------------------------------------------------------------------------------------------------|
-| `zeroize`     | Automatic memory wiping on drop (via `zeroize` + `secrecy`) — **recommended**                   |
-| `rand`        | `SecureRandomExt::random()` — cryptographically secure key generation                         |
-| `conversions` | **NEW** — `.to_hex()`, `.to_hex_upper()`, `.to_base64url()`, and `.ct_eq()` on all fixed secrets |
-| `serde`       | Optional serialization (deserialization disabled on `Dynamic<T>` for security)                 |
+| Feature       | Description                                                                                              |
+|---------------|----------------------------------------------------------------------------------------------------------|
+| `zeroize`     | Automatic memory wiping on drop — **strongly recommended**                                               |
+| `rand`        | `SecureRandomExt::random()` — cryptographically secure key generation                                   |
+| `conversions` | **Safe** `.to_hex()`, `.to_base64url()`, `.ct_eq()` — **requires explicit `.expose_secret()`** since v0.5.9 |
+| `serde`       | Optional serialization (deserialization intentionally disabled on `Dynamic<T>` for security)             |
 
 Works in `no_std` + `alloc`. Only pay for what you use.
 
@@ -49,39 +49,47 @@ dynamic_alias!(Password, String);
     let file_key = FileKey::random();
 }
 
-// Full ergonomics — with `conversions` feature
+// Secure conversions — explicit exposure required (v0.5.9+)
 #[cfg(feature = "conversions")]
 {
-    use secure_gate::SecureConversionsExt;
-    let hex = file_key.to_hex();             // "a1b2c3d4..."
-    let b64 = file_key.to_base64url();       // safe for JSON, URLs
-    assert!(file_key.ct_eq(&file_key));      // constant-time, timing-attack proof
+    let hex  = file_key.expose_secret().to_hex();        // loud, safe, intentional
+    let b64  = file_key.expose_secret().to_base64url();  // perfect for JSON/URLs
+    let same = file_key.expose_secret().ct_eq(other.expose_secret());
+
+    println!("Key (hex):       {hex}");
+    println!("Key (Base64URL): {b64}");
 }
 
-// Heap secrets — pure joy
+// Heap secrets — still pure joy
 let pw: Password = "hunter2".into();
 assert_eq!(pw.expose_secret(), "hunter2");
 ```
 
-## Secure Conversions — `conversions` feature
+## Secure Conversions — `conversions` feature (v0.5.9+)
 
 ```rust
-#[cfg(feature = "conversions")]
+#[cfg(all(feature = "rand", feature = "conversions"))]
 {
-    use secure_gate::{fixed_alias, SecureConversionsExt, SecureRandomExt};
+    use secure_gate::{fixed_alias, SecureRandomExt};
 
-    fixed_alias!(FileKey, 32);
-    let key = FileKey::random();
+    fixed_alias!(JwtKey, 32);
+    let key = JwtKey::random();
 
-    println!("Key (hex):       {}", key.to_hex());
-    println!("Key (Base64URL): {}", key.to_base64url());
-    assert!(key.ct_eq(&key));  // required for secure comparison
+    // Explicit exposure — this is intentional and visible in code reviews
+    let token_material = key.expose_secret().to_base64url();
+    let debug_hex      = key.expose_secret().to_hex_upper();
+
+    assert!(key.expose_secret().ct_eq(key.expose_secret())); // constant-time safe
 }
 ```
 
-- `.to_hex()` / `.to_hex_upper()` → perfect for logging, debugging
-- `.to_base64url()` → ideal for JSON export, URLs, config files
-- `.ct_eq()` → **mandatory** for secure equality — prevents timing attacks
+**Why `.expose_secret()` is required**  
+Starting with v0.5.9, all conversion methods live on the exposed `&[u8]` slice. This guarantees:
+- Every secret exposure is **grep-able** and **review-visible**
+- no accidental silent leaks
+- full compatibility with the `secrecy` / `zeroize` ecosystem philosophy
+
+Old direct methods (e.g. `key.to_hex()`) are **deprecated** and will be removed in v0.6.0.
 
 ## Memory Guarantees (`zeroize` enabled)
 
@@ -119,9 +127,9 @@ dynamic_alias!(JwtSigningKey, Vec<u8>);
 
 #[cfg(all(feature = "rand", feature = "conversions"))]
 {
-    use secure_gate::{SecureRandomExt, SecureConversionsExt};
+    use secure_gate::{SecureRandomExt};
     let key = Aes256Key::random();
-    let hex = key.to_hex();          // only with `conversions`
+    let hex = key.expose_secret().to_hex();          // explicit, safe, loud
     let pw: Password = "hunter2".into();
 }
 ```
@@ -131,20 +139,23 @@ dynamic_alias!(JwtSigningKey, Vec<u8>);
 | Implementation             | Median time | Overhead vs raw |
 |----------------------------|-------------|-----------------|
 | raw `[u8; 32]`             | ~460 ps     | —               |
-| `Fixed<[u8; 32]>`          | ~460 ps     | **+28 ps         |
+| `Fixed<[u8; 32]>`         | ~460 ps     | **+28 ps**      |
 | `fixed_alias!(Key, 32)`    | ~475 ps     | **+13 ps**      |
 
 Overhead is **< 0.1 CPU cycles** — indistinguishable from raw arrays.
 
 [View full report](https://slurp9187.github.io/secure-gate/benches/fixed_vs_raw/report/)
 
-## Migration from v0.4.x
+## Migration from v0.5.8
 
-- `SecureGate<T>` → `Fixed<T>` (stack) or `Dynamic<T>` (heap)
-- `.expose_secret()` → `value.expose_secret()`
-- Automatic zeroing → `FixedZeroizing<T>` or `DynamicZeroizing<T>`
+If you were using the `conversions` feature:
 
-**Note**: `.view()` and `.view_mut()` deprecated in v0.5.5 → removed in v0.6.0.
+```diff
+- let hex = key.to_hex();
++ let hex = key.expose_secret().to_hex();
+```
+
+The old methods are deprecated and will be removed in v0.6.0.
 
 ## Changelog
 

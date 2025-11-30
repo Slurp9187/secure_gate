@@ -1,30 +1,27 @@
 // src/conversions.rs
-//! Optional ergonomic conversions for fixed-size byte secrets
+//! Ergonomic conversions for fixed-size secrets — **explicit exposure required**
 //!
-//! This module provides the [`SecureConversionsExt`] trait, which adds common
-//! conversion methods (hex, Base64URL, constant-time equality) to all
-//! `Fixed<[u8; N]>` types and `fixed_alias!` types.
+//! This module provides the [`SecureConversionsExt`] trait containing `.to_hex()`,
+//! `.to_hex_upper()`, `.to_base64url()`, and `.ct_eq()`.
 //!
-//! Enabled only when the `conversions` feature is activated — zero impact otherwise.
+//! The trait is implemented **only on `&[u8]`**, meaning you **must** call
+//! `.expose_secret()` first. This guarantees every conversion site is loud,
+//! intentional, and visible in code reviews.
 //!
-//! # Examples
+//! Enabled via the `conversions` feature (zero impact when disabled).
 //!
-//! ```
+//! # Correct usage (v0.5.9+)
+//!
+//! ```rust
 //! use secure_gate::{fixed_alias, SecureConversionsExt};
-//!
-//! #[cfg(feature = "rand")]
-//! use secure_gate::SecureRandomExt;
 //!
 //! fixed_alias!(Aes256Key, 32);
 //!
-//! #[cfg(feature = "rand")]
-//! let key = Aes256Key::random();  // requires `rand` feature
-//! #[cfg(not(feature = "rand"))]
-//! let key = Aes256Key::from([0u8; 32]); // fallback for docs
+//! let key = Aes256Key::from([0x2a; 32]);
 //!
-//! let hex = key.to_hex();         // "00010203..."
-//! let b64 = key.to_base64url();   // "AAECAwQFBg..."
-//! assert!(key.ct_eq(&key));
+//! let hex  = key.expose_secret().to_hex();         // explicit and safe
+//! let b64  = key.expose_secret().to_base64url();
+//! let same = key.expose_secret().ct_eq(other.expose_secret());
 //! ```
 
 #[cfg(feature = "conversions")]
@@ -35,46 +32,110 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 #[cfg(feature = "conversions")]
 use base64::Engine;
 
-/// Extension trait for common secure conversions
+// Loud deprecation bomb — impossible to miss if someone uses the old API
+#[cfg(all(feature = "conversions", not(doc)))]
+#[deprecated(
+    since = "0.5.9",
+    note = "DIRECT CONVERSIONS BYPASS expose_secret() — USE .expose_secret().to_hex() ETC."
+)]
+#[doc(hidden)]
+const _DIRECT_CONVERSIONS_ARE_EVIL: () = ();
+
+/// Extension trait for common secure conversions.
 ///
-/// Adds `.to_hex()`, `.to_hex_upper()`, `.to_base64url()`, and `.ct_eq()`
-/// to all fixed-size byte secrets.
+/// # Security
+///
+/// This trait is **intentionally** only implemented for `&[u8]`.
+/// There is **no** impl for `Fixed<T>` — this guarantees every conversion
+/// requires an explicit `.expose_secret()` call.
 pub trait SecureConversionsExt {
-    /// Convert to lowercase hex string
     fn to_hex(&self) -> String;
-
-    /// Convert to uppercase hex string
     fn to_hex_upper(&self) -> String;
-
-    /// Convert to Base64URL (no padding) — ideal for JSON export and URLs
     fn to_base64url(&self) -> String;
-
-    /// Constant-time equality comparison
-    ///
-    /// Use this instead of `==` for secrets — prevents timing attacks.
     fn ct_eq(&self, other: &Self) -> bool;
 }
 
+/// Core implementation — only on already-exposed bytes
 #[cfg(feature = "conversions")]
-impl<const N: usize> SecureConversionsExt for crate::Fixed<[u8; N]> {
+impl SecureConversionsExt for [u8] {
     #[inline]
     fn to_hex(&self) -> String {
-        hex::encode(self.expose_secret())
+        hex::encode(self)
     }
 
     #[inline]
     fn to_hex_upper(&self) -> String {
-        hex::encode_upper(self.expose_secret())
+        hex::encode_upper(self)
     }
 
     #[inline]
     fn to_base64url(&self) -> String {
-        URL_SAFE_NO_PAD.encode(self.expose_secret())
+        URL_SAFE_NO_PAD.encode(self)
     }
 
     #[inline]
-    fn ct_eq(&self, other: &Self) -> bool {
-        use subtle::ConstantTimeEq;
-        self.expose_secret().ct_eq(other.expose_secret()).into()
+    fn ct_eq(&self, other: &[u8]) -> bool {
+        subtle::ConstantTimeEq::ct_eq(self, other).into()
     }
+}
+
+/// Backward-compatibility shims — **deprecated**
+///
+/// Will be removed in v0.6.0.
+#[cfg(feature = "conversions")]
+impl<const N: usize> crate::Fixed<[u8; N]> {
+    #[deprecated(
+        since = "0.5.9",
+        note = "use `expose_secret().to_hex()` instead — makes secret exposure explicit"
+    )]
+    #[doc(hidden)]
+    #[inline(always)]
+    pub fn to_hex(&self) -> String {
+        self.expose_secret().to_hex()
+    }
+
+    #[deprecated(since = "0.5.9", note = "use `expose_secret().to_hex_upper()` instead")]
+    #[doc(hidden)]
+    #[inline(always)]
+    pub fn to_hex_upper(&self) -> String {
+        self.expose_secret().to_hex_upper()
+    }
+
+    #[deprecated(since = "0.5.9", note = "use `expose_secret().to_base64url()` instead")]
+    #[doc(hidden)]
+    #[inline(always)]
+    pub fn to_base64url(&self) -> String {
+        self.expose_secret().to_base64url()
+    }
+
+    #[deprecated(
+        since = "0.5.9",
+        note = "use `expose_secret().ct_eq(other.expose_secret())` instead"
+    )]
+    #[doc(hidden)]
+    #[inline(always)]
+    pub fn ct_eq(&self, other: &Self) -> bool {
+        self.expose_secret().ct_eq(other.expose_secret())
+    }
+}
+
+// ───── Compile-time safety net — prevents accidental re-introduction of the bad impl ─────
+//
+// We use a negative impl to trigger a compile error if someone adds an impl of
+// SecureConversionsExt for Fixed<[u8; N]> in the future.
+//
+// This is a well-known Rust pattern (used by crates like `serde`, `thiserror`, etc.)
+// to enforce API invariants at compile time.
+
+#[cfg(feature = "conversions")]
+trait _AssertNoImplForFixed {}
+#[cfg(feature = "conversions")]
+impl<T> _AssertNoImplForFixed for T where T: SecureConversionsExt {}
+
+#[cfg(feature = "conversions")]
+impl<const N: usize> _AssertNoImplForFixed for crate::Fixed<[u8; N]> {
+    //  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    //  If anyone ever adds `impl SecureConversionsExt for Fixed<[u8; N]>`, this line
+    //  will cause a compile error: "conflicting implementation"
+    //  → immediate, loud failure instead of silent security regression
 }

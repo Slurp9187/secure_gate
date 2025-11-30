@@ -5,6 +5,31 @@ All changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),  
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.9] - 2025-11-30
+
+### Security & API Improvement — `conversions` feature
+
+- **All conversion methods now require explicit `.expose_secret()`**  
+  This is a deliberate breaking change to restore the crate’s core security invariant:  
+  every access to secret bytes must be loud, visible, and grep-able.
+
+  ```rust
+  // v0.5.8 (deprecated)
+  let hex = key.to_hex();
+
+  // v0.5.9+ (required)
+  let hex = key.expose_secret().to_hex();
+  ```
+
+  The same applies to `.to_hex_upper()`, `.to_base64url()`, and `.ct_eq()`.
+
+- Direct methods on `Fixed<[u8; N]>` are **deprecated** and will be removed in v0.6.0.
+- Old syntax continues to work with clear deprecation warnings.
+- Compile-time test added: removing any `#[deprecated]` attribute now **fails CI**.
+- Documentation and examples fully updated to teach the safe pattern.
+
+This change eliminates a subtle but serious footgun while preserving ergonomics and backward compatibility during the 0.5.x series.
+
 ## [0.5.8] - 2025-11-29
 
 ### Added
