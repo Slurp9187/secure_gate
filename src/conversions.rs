@@ -12,16 +12,17 @@
 //!
 //! # Correct usage (v0.5.9+)
 //!
-//! ```rust
+//! ```
 //! use secure_gate::{fixed_alias, SecureConversionsExt};
 //!
 //! fixed_alias!(Aes256Key, 32);
 //!
-//! let key = Aes256Key::from([0x2a; 32]);
+//! let key1 = Aes256Key::from([0x42; 32]);
+//! let key2 = Aes256Key::from([0x42; 32]);
 //!
-//! let hex  = key.expose_secret().to_hex();         // explicit and safe
-//! let b64  = key.expose_secret().to_base64url();
-//! let same = key.expose_secret().ct_eq(other.expose_secret());
+//! let hex = key1.expose_secret().to_hex();
+//! let b64 = key1.expose_secret().to_base64url();
+//! assert!(key1.expose_secret().ct_eq(key2.expose_secret()));
 //! ```
 
 #[cfg(feature = "conversions")]
