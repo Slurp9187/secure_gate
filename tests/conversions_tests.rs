@@ -1,0 +1,90 @@
+// tests/conversions_tests.rs
+//! Tests for the optional `conversions` feature
+//!
+//! Only compiled when the `conversions` feature is enabled.
+
+#![cfg(feature = "conversions")]
+
+use secure_gate::{fixed_alias, SecureConversionsExt};
+
+fixed_alias!(TestKey, 32);
+fixed_alias!(Nonce, 24);
+fixed_alias!(SmallKey, 16);
+
+#[test]
+fn to_hex_and_to_hex_upper() {
+    let bytes = [
+        0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA,
+        0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 0xFE, 0xDC,
+        0xBA, 0x98,
+    ];
+    let key: TestKey = bytes.into();
+
+    assert_eq!(
+        key.to_hex(),
+        "deadbeef00112233445566778899aabbccddeeff0123456789abcdeffedcba98"
+    );
+    assert_eq!(
+        key.to_hex_upper(),
+        "DEADBEEF00112233445566778899AABBCCDDEEFF0123456789ABCDEFFEDCBA98"
+    );
+}
+
+#[test]
+fn to_base64url() {
+    let key = TestKey::from([
+        0xFB, 0x7C, 0xD5, 0x7F, 0x83, 0xA5, 0xA5, 0x6D, 0xC2, 0xC7, 0x2F, 0xD0, 0x3E, 0xA0, 0xE0,
+        0xF0, 0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6, 0x07, 0x18, 0x29, 0x3A, 0x4B, 0x5C, 0x6D, 0x7E,
+        0x8F, 0x90,
+    ]);
+
+    assert_eq!(
+        key.to_base64url(),
+        "-3zVf4OlpW3Cxy_QPqDg8KGyw9Tl9gcYKTpLXG1-j5A"
+    );
+}
+
+#[test]
+fn ct_eq_same_key() {
+    let key1 = TestKey::from([1u8; 32]);
+    let key2 = TestKey::from([1u8; 32]);
+
+    assert!(key1.ct_eq(&key2));
+    assert!(key2.ct_eq(&key1));
+    assert!(key1.ct_eq(&key1));
+}
+
+#[test]
+fn ct_eq_different_keys() {
+    let key1 = TestKey::from([1u8; 32]);
+    let key2 = TestKey::from([2u8; 32]);
+
+    let mut bytes = [1u8; 32];
+    bytes[31] = 9;
+    let key3 = TestKey::from(bytes);
+
+    assert!(!key1.ct_eq(&key2));
+    assert!(!key1.ct_eq(&key3));
+}
+
+#[test]
+fn works_on_all_fixed_alias_sizes() {
+    let nonce: Nonce = [0xFFu8; 24].into();
+    let small: SmallKey = [0xAAu8; 16].into();
+
+    assert_eq!(nonce.to_hex().len(), 48);
+    assert_eq!(small.to_hex().len(), 32);
+
+    assert_eq!(nonce.to_base64url().len(), 32);
+    assert_eq!(small.to_base64url().len(), 22);
+}
+
+#[test]
+fn trait_is_available_on_fixed_alias_types() {
+    fixed_alias!(MyKey, 32);
+
+    let key = MyKey::from([0x42u8; 32]);
+    let _ = key.to_hex();
+    let _ = key.to_base64url();
+    let _ = key.ct_eq(&key);
+}

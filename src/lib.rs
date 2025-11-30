@@ -14,29 +14,45 @@
 //! # Features
 //!
 //! - `zeroize`: Enables automatic memory wiping on drop via `zeroize` and `secrecy`.
-//! - `rand`: Enables [`SecureRandomExt::random()`] for generating fixed-size secrets.
+//! - `rand`: Enables `SecureRandomExt::random()` for generating fixed-size secrets.
+//! - `conversions`: **Optional** — adds `.to_hex()`, `.to_hex_upper()`, `.to_base64url()`, and `.ct_eq()` to all fixed-size secrets.
 //! - `serde`: Optional serialization support (deserialization disabled for `Dynamic<T>` for security).
 //! - Works in `no_std` + `alloc` environments.
 //!
 //! # Quick Start
 //!
 //! ```
-//! use secure_gate::{dynamic_alias, fixed_alias, Dynamic, Fixed};
+//! use secure_gate::{fixed_alias, dynamic_alias};
 //!
 //! fixed_alias!(Aes256Key, 32);
 //! dynamic_alias!(Password, String);
 //!
-//! let key: Aes256Key = [42u8; 32].into();
-//! let pw: Password = "hunter2".into();
+//! // With `rand` feature
+//! #[cfg(feature = "rand")]
+//! {
+//!     use secure_gate::SecureRandomExt;
+//!     let key = Aes256Key::random();           // cryptographically secure
+//!     let _ = key.expose_secret();
+//! }
 //!
-//! assert_eq!(key.expose_secret()[0], 42);
+//! // With `conversions` feature
+//! #[cfg(all(feature = "rand", feature = "conversions"))]
+//! {
+//!     use secure_gate::{SecureConversionsExt, SecureRandomExt};
+//!     let key = Aes256Key::random();
+//!     let hex = key.to_hex();                   // "a1b2c3d4..."
+//!     let b64 = key.to_base64url();             // safe for JSON
+//!     assert!(key.ct_eq(&key));                 // constant-time equality
+//! }
+//!
+//! // Heap secrets — beautiful ergonomics
+//! let pw: Password = "hunter2".into();
 //! assert_eq!(pw.expose_secret(), "hunter2");
 //! ```
 //!
 //! See individual modules for detailed documentation.
 
 #![cfg_attr(not(feature = "zeroize"), forbid(unsafe_code))]
-
 extern crate alloc;
 
 // Core modules
@@ -51,6 +67,9 @@ mod zeroize;
 #[cfg(feature = "serde")]
 mod serde;
 
+#[cfg(feature = "conversions")]
+mod conversions;
+
 // Public API
 pub use dynamic::Dynamic;
 pub use fixed::Fixed;
@@ -63,7 +82,6 @@ pub use zeroize::{DynamicZeroizing, FixedZeroizing};
 #[cfg(feature = "zeroize")]
 pub type Zeroizing<T> = ::zeroize::Zeroizing<T>;
 
-// Re-export the trait and marker directly from the zeroize crate
 #[cfg(feature = "zeroize")]
 pub use ::zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -73,3 +91,7 @@ pub mod rng;
 
 #[cfg(feature = "rand")]
 pub use rng::SecureRandomExt;
+
+// Conversions integration (opt-in)
+#[cfg(feature = "conversions")]
+pub use conversions::SecureConversionsExt;

@@ -10,87 +10,106 @@ Zero-cost, `no_std`-compatible wrappers for handling sensitive data in memory.
 
 ```toml
 [dependencies]
-secure-gate = "0.5.7"
+secure-gate = "0.5.8"
 ```
 
 With automatic zeroing (recommended):
 
 ```toml
-secure-gate = { version = "0.5.7", features = ["zeroize"] }
+secure-gate = { version = "0.5.8", features = ["zeroize"] }
 ```
 
 With secure random generation (`OsRng`):
 
 ```toml
-secure-gate = { version = "0.5.7", features = ["zeroize", "rand"] }
+secure-gate = { version = "0.5.8", features = ["zeroize", "rand"] }
+```
+
+With full ergonomics (recommended for application code):
+
+```toml
+secure-gate = { version = "0.5.8", features = ["zeroize", "rand", "conversions"] }
 ```
 
 ## Features
 
-| Feature   | Description                                            |
-|-----------|--------------------------------------------------------|
-| `zeroize` | Enables `zeroize` integration (`Zeroizing`, `SecretBox`) |
-| `rand`    | Enables `SecureRandomExt::random()` for `Fixed<[u8; N]>` types |
-| `serde`   | Optional serialization support                         |
-| `alloc`   | Required for `Dynamic<T>` (enabled by default)         |
-| `std`     | Not required – works in `no_std` environments          |
+| Feature       | Description                                                                                     |
+|---------------|-------------------------------------------------------------------------------------------------|
+| `zeroize`     | Enables automatic memory wiping on drop via `zeroize` and `secrecy`                             |
+| `rand`        | Enables `SecureRandomExt::random()` — cryptographically secure key/nonce generation           |
+| `conversions` | **Optional** — adds `.to_hex()`, `.to_hex_upper()`, `.to_base64url()`, and `.ct_eq()` to all fixed-size secrets |
+| `serde`       | Optional serialization support (deserialization disabled for `Dynamic<T>` for security)       |
+
+Works in `no_std` + `alloc` environments. Only pay for what you use.
 
 ## Quick Start
 
 ```rust
-use secure_gate::{fixed_alias, dynamic_alias, SecureRandomExt};
+use secure_gate::{fixed_alias, dynamic_alias};
 
 fixed_alias!(Aes256Key, 32);
 fixed_alias!(XChaCha20Nonce, 24);
 dynamic_alias!(Password, String);
-dynamic_alias!(JwtKey, Vec<u8>);
 
-// Fixed-size secrets — perfect ergonomics
-let key: Aes256Key = rng.gen().into();           // From<[u8; 32]>
-let nonce: XChaCha20Nonce = rng.gen().into();
+// The dream — with `rand` feature
+#[cfg(feature = "rand")]
+{
+    use secure_gate::SecureRandomExt;
+    let key = Aes256Key::random();        // cryptographically secure, zero-cost
+    let nonce = XChaCha20Nonce::random();
+}
 
-// With the `rand` feature — the dream becomes reality
-let key = Aes256Key::random();        // cryptographically secure, zero-cost
-let nonce = XChaCha20Nonce::random();
+// With `conversions` feature — pure joy
+#[cfg(feature = "conversions")]
+{
+    use secure_gate::SecureConversionsExt;
+    let hex = key.to_hex();                   // "a1b2c3d4..."
+    let b64 = key.to_base64url();             // safe for JSON
+    assert!(key.ct_eq(&key));                 // constant-time, secure
+}
 
-// Heap-based secrets — now just as beautiful!
-let pw: Password = "hunter2".into();                    // From<&str>
-let pw2: Password = "hunter2".to_string().into();       // From<String>
-let jwt: JwtKey = secret_bytes.into();                  // From<Vec<u8>>
-
-// Zeroizing heap secrets — same ergonomics
-let temp_pw: DynamicZeroizing<String> = "temp123".into();
-let temp_key: DynamicZeroizing<Vec<u8>> = vec![0u8; 32].into();
-
-// Access is explicit and loud
-let bytes: &[u8] = key.expose_secret();
-let pw_str: &str = pw.expose_secret();
+// Heap secrets — beautiful ergonomics
+let pw: Password = "hunter2".into();
 ```
 
 ## Secure Random Generation (`rand` feature)
 
 ```rust
-fixed_alias!(Aes128Key, 16);
-fixed_alias!(Aes256Key, 32);
-fixed_alias!(HmacKey, 64);
-
-let key = Aes256Key::random();     // thread-local OsRng, <80ns after first use
-let hmac_key = HmacKey::random();
+#[cfg(feature = "rand")]
+{
+    use secure_gate::{fixed_alias, SecureRandomExt};
+    fixed_alias!(Aes256Key, 32);
+    let key = Aes256Key::random();  // thread-local OsRng, <80ns after first use
+}
 ```
 
-- Powered by `rand::rngs::OsRng` via `TryRngCore::try_fill_bytes`
-- Thread-local, lazily initialized, no heap allocation
-- Panics on RNG failure (standard in high-assurance crypto)
-- Works with all `fixed_alias!` types
+## Secure Conversions (`conversions` feature)
+
+```rust
+#[cfg(feature = "conversions")]
+{
+    use secure_gate::{fixed_alias, SecureConversionsExt};
+    fixed_alias!(FileKey, 32);
+    let key = FileKey::random();  // requires `rand` too
+
+    println!("Key (hex): {}", key.to_hex());
+    println!("Key (Base64URL): {}", key.to_base64url());
+    assert!(key.ct_eq(&key));  // constant-time equality — timing-attack resistant
+}
+```
+
+- `.to_hex()` / `.to_hex_upper()` → perfect for logging/debugging
+- `.to_base64url()` → ideal for JSON export, URLs, config files
+- `.ct_eq()` → **required** for secure comparison of secrets
 
 ## Memory Guarantees (`zeroize` feature enabled)
 
 | Type                     | Allocation | Auto-zero on drop | Full capacity wiped | Slack memory eliminated | Notes |
 |--------------------------|------------|-------------------|---------------------|--------------------------|-------|
-| `Fixed<T>`               | Stack      | Yes (via `Zeroizing`) | Yes             | Yes (no heap)            | No allocation |
-| `Dynamic<T>`             | Heap       | Yes (via `SecretBox`) | Yes             | No (until drop)          | Use `finish_mut()` to shrink |
-| `FixedZeroizing<T>`      | Stack      | Yes                | Yes             | Yes                      | RAII wrapper |
-| `DynamicZeroizing<T>`    | Heap       | Yes                | Yes             | No (until drop)          | `SecretBox` prevents copies |
+| `Fixed<T>`               | Stack      | Yes               | Yes                 | Yes (no heap)            | No allocation |
+| `Dynamic<T>`             | Heap       | Yes               | Yes                 | No (until drop)          | Use `finish_mut()` to shrink |
+| `FixedZeroizing<T>`      | Stack      | Yes               | Yes                 | Yes                      | RAII wrapper |
+| `DynamicZeroizing<T>`    | Heap       | Yes               | Yes                 | No (until drop)          | `SecretBox` prevents copies |
 
 **Important**: `DynamicZeroizing<T>` is accessed via `.expose_secret()` — it does **not** implement `Deref`.
 
@@ -102,12 +121,10 @@ secure!([u8; 32], rng.gen())                    // → Fixed<[u8; 32]>
 
 // Heap secrets (non-zeroizing)
 secure!(String, "pw".into())                    // → Dynamic<String>
-secure!(Vec<u8>, data.to_vec())                 // → Dynamic<Vec<u8>>
 secure!(heap Vec<u8>, payload)                  // → Dynamic<Vec<u8>>
 
 // Zeroizing secrets (zeroize feature)
 secure_zeroizing!([u8; 32], key)                // → FixedZeroizing<[u8; 32]>
-secure_zeroizing!(heap String, "temp".into())   // → DynamicZeroizing<String>
 
 // Type aliases — the recommended way
 fixed_alias!(Aes256Key, 32)
@@ -117,16 +134,18 @@ dynamic_alias!(Password, String)
 ## Example Aliases
 
 ```rust
-fixed_alias!(Aes128Key, 16);
 fixed_alias!(Aes256Key, 32);
 fixed_alias!(XChaCha20Nonce, 24);
 dynamic_alias!(Password, String);
 dynamic_alias!(JwtSigningKey, Vec<u8>);
 
-// Usage — pure joy
-let key = Aes256Key::random();           // with `rand` feature
-let pw: Password = "hunter2".into();
-let jwt: JwtSigningKey = secret_bytes.into();
+#[cfg(all(feature = "rand", feature = "conversions"))]
+{
+    use secure_gate::{SecureRandomExt, SecureConversionsExt};
+    let key = Aes256Key::random();
+    let hex = key.to_hex();          // with `conversions` feature
+    let pw: Password = "hunter2".into();
+}
 ```
 
 ### Zero-cost — proven on real hardware
@@ -137,10 +156,6 @@ let jwt: JwtSigningKey = secret_bytes.into();
 | `Fixed<[u8; 32]>`          | ~460 ps     | **+28 ps**          |
 | `fixed_alias!(Key, 32)`    | ~475 ps     | **+13 ps**          |
 
-**Test machine** (2019-era laptop):  
-Intel Core i7-10510U • 16 GB RAM • Windows 11 Pro  
-Measured with Criterion under real-world load.
-
 Overhead is **< 0.1 CPU cycles** — indistinguishable from raw arrays.
 
 [View full interactive report](https://slurp9187.github.io/secure-gate/benches/fixed_vs_raw/report/)
@@ -149,7 +164,6 @@ Overhead is **< 0.1 CPU cycles** — indistinguishable from raw arrays.
 
 - `SecureGate<T>` → `Fixed<T>` (stack) or `Dynamic<T>` (heap)
 - `.expose_secret()` → `value.expose_secret()`
-- `.expose_secret_mut()` → `value.expose_secret_mut()`
 - Automatic zeroing → `FixedZeroizing<T>` or `DynamicZeroizing<T>`
 
 **Note**: `.view()` and `.view_mut()` are deprecated in v0.5.5 and will be removed in v0.6.0.

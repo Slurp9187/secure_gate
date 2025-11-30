@@ -5,6 +5,27 @@ All changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),  
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.8] - 2025-11-29
+
+### Added
+- **New optional `conversions` feature** — the most requested ergonomics upgrade yet!
+  - Adds `.to_hex()`, `.to_hex_upper()`, `.to_base64url()`, and `.ct_eq()` to **all** `Fixed<[u8; N]>` types and `fixed_alias!` types
+  - Enabled with `features = ["conversions"]`
+  - **Zero impact** on minimal or `no_std` builds — only compiled when requested
+  - Perfect for:
+    - Exporting keys to JSON (`to_base64url()`)
+    - Logging/debugging (`to_hex()` with redacted `Debug`)
+    - Secure equality checks (`ct_eq()` — timing-attack resistant)
+  - Fully tested with real vectors and constant-time verification
+  - Named consistently with `SecureRandomExt` → `SecureConversionsExt`
+
+```rust
+fixed_alias!(FileKey, 32);
+let key = FileKey::random();
+let password = Password::new(key.to_hex());        // beautiful
+let export = key.to_base64url();                   // safe for JSON
+assert!(key.ct_eq(&other_key));                    // secure
+
 ## [0.5.7] - 2025-11-27
 
 ### Added
