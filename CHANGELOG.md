@@ -5,6 +5,27 @@ All changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),  
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.10] - 2025-12-02
+
+### Added
+- `HexString` newtype in `conversions.rs` for type-safe, validated hex strings (requires "conversions" feature). Includes `.new()` with validation (even length, ascii hex digits, lowercase normalization), `.to_bytes()` for safe decoding, and `.byte_len()` property. Enforces `.expose_secret()` for access, aligning with safety rules.
+- `RandomHex` newtype in `conversions.rs` for random hex strings (requires "rand + conversions"). Wraps `HexString`, inherits methods like `.to_bytes()` via Deref, enforces `.expose_secret()`. Constructor only via RNG for freshness.
+- `PartialEq` and `Eq` impls for `Dynamic<T>` (bounded on T: PartialEq/Eq) in `dynamic.rs`—enables comparisons on dynamic secrets like `Dynamic<String>`.
+- `RandomBytes<const N: usize>` newtype in `rng.rs` for semantically fresh random bytes (requires "rand" feature). Wraps `Fixed<[u8; N]>`, inherits methods via Deref, enforces `.expose_secret()`/`.expose_secret_mut()`.
+- `random_alias!` macro in `macros.rs` for aliases on `RandomBytes<N>` (requires "rand" feature). Syntax: `random_alias!(Name, size);`—inherits `.new()` and deprecated shims; supports `.random_hex()` if "conversions" enabled.
+- Comprehensive paranoia tests: `macros_paranoia_tests.rs` (all macros + edges) and `random_bytes_paranoia_tests.rs` (RandomBytes safety, deprecations, type distinctions).
+
+### Changed
+- Renamed randomness method to `.new()` in `rng.rs` for idiomatic constructors (Clippy-compliant). Added soft deprecations for `.random_bytes()` and `.random()` with friendly notes and doc aliases.
+- Updated doc examples in `lib.rs` and `rng.rs` to use `random_alias!` and `.new()`.
+
+### Fixed
+- Privacy/import issues in tests (e.g., `use secure_gate::rng::{RandomBytes, SecureRandomExt};`).
+- Doc-test failures by adding trait imports in examples.
+- Test assertions in paranoia suites (e.g., expect different random values, not equal).
+- Macro expansion/orphan rules by moving trait impls to `rng.rs` generics.
+- Zeroize access in tests via `secrecy::ExposeSecret`.
+
 ## [0.5.9] - 2025-11-30
 
 ### Security & API Improvement — `conversions` feature
