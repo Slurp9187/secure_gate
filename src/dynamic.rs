@@ -282,3 +282,17 @@ impl From<&str> for Dynamic<String> {
         Self(Box::new(s.to_string()))
     }
 }
+
+// ───── Add PartialEq and Eq impls for Dynamic ─────
+/// Implements PartialEq for Dynamic<T> where T implements PartialEq.
+///
+/// This enables comparison on Dynamic types like Dynamic<String> or Dynamic<Vec<u8>>.
+impl<T: PartialEq + ?Sized> PartialEq for Dynamic<T> {
+    #[inline(always)]
+    fn eq(&self, other: &Self) -> bool {
+        **self == **other
+    }
+}
+
+/// Implements Eq for Dynamic<T> where T implements Eq.
+impl<T: Eq + ?Sized> Eq for Dynamic<T> {}

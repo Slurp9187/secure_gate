@@ -140,3 +140,54 @@ impl<const N: usize> _AssertNoImplForFixed for crate::Fixed<[u8; N]> {
     //  will cause a compile error: "conflicting implementation"
     //  → immediate, loud failure instead of silent security regression
 }
+
+// ───── New: HexString newtype for type-safe hex handling ─────
+
+/// Newtype for validated hex strings with extensions.
+///
+/// Deref to Dynamic<String> to inherit String methods/properties.
+/// Enforces explicit exposure via expose_secret().
+#[cfg(feature = "conversions")]
+#[derive(Clone, Debug, PartialEq)]
+pub struct HexString(crate::Dynamic<String>);
+
+#[cfg(feature = "conversions")]
+impl HexString {
+    /// Creates a new HexString if the input is valid hex (even length, 0-9a-fA-F chars).
+    /// Normalizes to lowercase.
+    pub fn new(s: String) -> Result<Self, &'static str> {
+        let lower = s.to_lowercase();
+        if lower.len() % 2 != 0 || !lower.chars().all(|c| c.is_ascii_hexdigit()) {
+            Err("Invalid hex: must be even length with 0-9a-f chars")
+        } else {
+            Ok(Self(crate::Dynamic::new(lower)))
+        }
+    }
+
+    /// Decodes back to bytes (safe due to validation).
+    pub fn to_bytes(&self) -> Vec<u8> {
+        hex::decode(self.expose_secret()).expect("Validated hex")
+    }
+
+    /// Property: Original byte length (half of hex len).
+    pub fn byte_len(&self) -> usize {
+        self.expose_secret().len() / 2
+    }
+}
+
+#[cfg(feature = "conversions")]
+impl core::ops::Deref for HexString {
+    type Target = crate::Dynamic<String>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[cfg(feature = "conversions")]
+use secrecy::ExposeSecret;
+#[cfg(feature = "conversions")]
+impl ExposeSecret<String> for HexString {
+    fn expose_secret(&self) -> &String {
+        self.0.expose_secret()
+    }
+}

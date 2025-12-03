@@ -68,7 +68,7 @@ mod zeroize;
 mod serde;
 
 #[cfg(feature = "conversions")]
-mod conversions;
+pub mod conversions;
 
 // Public API
 pub use dynamic::Dynamic;

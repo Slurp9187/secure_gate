@@ -153,3 +153,20 @@ mod deprecation_must_be_enforced {
         silenced();
     }
 }
+
+#[cfg(feature = "conversions")]
+#[test]
+fn hex_string_validates_and_decodes() {
+    use secure_gate::conversions::HexString;
+    let valid = "a1b2c3d4e5f67890".to_string(); // 16 chars (8 bytes)
+    let hex = HexString::new(valid).unwrap();
+    assert_eq!(hex.expose_secret(), "a1b2c3d4e5f67890");
+    assert_eq!(hex.byte_len(), 8);
+    assert_eq!(
+        hex.to_bytes(),
+        vec![0xa1, 0xb2, 0xc3, 0xd4, 0xe5, 0xf6, 0x78, 0x90]
+    );
+
+    let invalid = "a1b2c3d".to_string(); // Odd length
+    assert!(HexString::new(invalid).is_err());
+}
