@@ -1,11 +1,9 @@
 // ==========================================================================
 // src/fixed.rs
 // ==========================================================================
-
 use core::fmt;
-use core::ops::{Deref, DerefMut};
 
-pub struct Fixed<T>(pub T);
+pub struct Fixed<T>(T); // ← field is now PRIVATE
 
 impl<T> Fixed<T> {
     #[inline(always)]
@@ -34,22 +32,18 @@ impl<T> Fixed<T> {
     }
 }
 
-impl<T> Deref for Fixed<T> {
-    type Target = T;
-    #[inline(always)]
-    fn deref(&self) -> &T {
-        &self.0
-    }
-}
-
-impl<T> DerefMut for Fixed<T> {
-    #[inline(always)]
-    fn deref_mut(&mut self) -> &mut T {
-        &mut self.0
-    }
-}
-
+// === BYTE-ARRAY SPECIFIC HELPERS (this was missing!) ===
 impl<const N: usize> Fixed<[u8; N]> {
+    #[inline(always)]
+    pub const fn len(&self) -> usize {
+        N
+    }
+
+    #[inline(always)]
+    pub const fn is_empty(&self) -> bool {
+        N == 0
+    }
+
     #[inline]
     pub fn from_slice(bytes: &[u8]) -> Self {
         assert_eq!(bytes.len(), N, "slice length mismatch");

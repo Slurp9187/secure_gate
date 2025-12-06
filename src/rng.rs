@@ -4,7 +4,7 @@
 
 use crate::{Dynamic, Fixed};
 use rand::rngs::OsRng;
-use rand::TryRngCore;
+use rand::TryRngCore; // ← only need this for try_ methods
 use std::cell::RefCell;
 
 thread_local! {
@@ -18,7 +18,8 @@ impl<const N: usize> FixedRng<N> {
     pub fn generate() -> Self {
         let mut bytes = [0u8; N];
         OS_RNG.with(|cell| {
-            cell.borrow_mut()
+            let mut rng = cell.borrow_mut();
+            (*rng)
                 .try_fill_bytes(&mut bytes)
                 .expect("OsRng failed — this should never happen on supported platforms");
         });
@@ -27,8 +28,9 @@ impl<const N: usize> FixedRng<N> {
 
     #[inline(always)]
     pub fn expose_secret(&self) -> &[u8; N] {
-        &self.0 .0
+        self.0.expose_secret()
     }
+
     #[inline(always)]
     pub const fn len(&self) -> usize {
         N
@@ -53,7 +55,8 @@ impl DynamicRng {
     pub fn generate(len: usize) -> Self {
         let mut bytes = vec![0u8; len];
         OS_RNG.with(|cell| {
-            cell.borrow_mut()
+            let mut rng = cell.borrow_mut();
+            (*rng)
                 .try_fill_bytes(&mut bytes)
                 .expect("OsRng failed — this should never happen on supported platforms");
         });
@@ -67,17 +70,18 @@ impl DynamicRng {
             let mut rng = cell.borrow_mut();
             for _ in 0..len {
                 let byte = loop {
-                    let b = rng.try_next_u32().expect("OsRng failed") % 256;
-                    if b < 248 {
-                        break b % 62;
+                    let val = rng.try_next_u32().expect("OsRng failed");
+                    let candidate = val % 62;
+                    if val < (u32::MAX / 62) * 62 {
+                        break candidate as u8;
                     }
                 };
                 let c = if byte < 10 {
-                    (b'0' + byte as u8) as char
+                    (b'0' + byte) as char
                 } else if byte < 36 {
-                    (b'a' + (byte - 10) as u8) as char
+                    (b'a' + (byte - 10)) as char
                 } else {
-                    (b'A' + (byte - 36) as u8) as char
+                    (b'A' + (byte - 36)) as char
                 };
                 s.push(c);
             }

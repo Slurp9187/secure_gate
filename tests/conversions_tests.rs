@@ -3,11 +3,13 @@
 // ==========================================================================
 #![cfg(feature = "conversions")]
 
-use secure_gate::{dynamic_alias, HexString, SecureConversionsExt};
+use secure_gate::{dynamic_alias, HexString, RandomHex, SecureConversionsExt};
+// No more SecureConversionsExt import — we use it on the exposed secret
 
 dynamic_alias!(TestKey, Vec<u8>);
 dynamic_alias!(Nonce, Vec<u8>);
 dynamic_alias!(SmallKey, Vec<u8>);
+dynamic_alias!(MyKey, Vec<u8>);
 
 #[test]
 fn to_hex_and_to_hex_upper() {
@@ -19,11 +21,11 @@ fn to_hex_and_to_hex_upper() {
     let key: TestKey = bytes.into();
 
     assert_eq!(
-        key.to_hex(),
+        key.expose_secret().to_hex(),
         "deadbeef00112233445566778899aabbccddeeff0123456789abcdeffedcba98"
     );
     assert_eq!(
-        key.to_hex_upper(),
+        key.expose_secret().to_hex_upper(),
         "DEADBEEF00112233445566778899AABBCCDDEEFF0123456789ABCDEFFEDCBA98"
     );
 }
@@ -37,7 +39,7 @@ fn to_base64url() {
     ]);
 
     assert_eq!(
-        key.to_base64url(),
+        key.expose_secret().to_base64url(),
         "-3zVf4OlpW3Cxy_QPqDg8KGyw9Tl9gcYKTpLXG1-j5A"
     );
 }
@@ -46,7 +48,7 @@ fn to_base64url() {
 fn ct_eq_same_key() {
     let key1 = TestKey::from(vec![1u8; 32]);
     let key2 = TestKey::from(vec![1u8; 32]);
-    assert!(key1.ct_eq(&key2));
+    assert!(key1.expose_secret().ct_eq(key2.expose_secret()));
 }
 
 #[test]
@@ -57,8 +59,8 @@ fn ct_eq_different_keys() {
     bytes[31] = 9;
     let key3 = TestKey::from(bytes);
 
-    assert!(!key1.ct_eq(&key2));
-    assert!(!key1.ct_eq(&key3));
+    assert!(!key1.expose_secret().ct_eq(key2.expose_secret()));
+    assert!(!key1.expose_secret().ct_eq(key3.expose_secret()));
 }
 
 #[test]
@@ -66,34 +68,30 @@ fn works_on_all_dynamic_alias_sizes() {
     let nonce: Nonce = vec![0xFFu8; 24].into();
     let small: SmallKey = vec![0xAAu8; 16].into();
 
-    assert_eq!(nonce.to_hex().len(), 48);
-    assert_eq!(small.to_hex().len(), 32);
-    assert_eq!(nonce.to_base64url().len(), 32);
-    assert_eq!(small.to_base64url().len(), 22);
+    assert_eq!(nonce.expose_secret().to_hex().len(), 48);
+    assert_eq!(small.expose_secret().to_hex().len(), 32);
+    assert_eq!(nonce.expose_secret().to_base64url().len(), 32);
+    assert_eq!(small.expose_secret().to_base64url().len(), 22);
 }
 
 #[test]
 fn trait_is_available_on_dynamic_alias_types() {
-    dynamic_alias!(MyKey, Vec<u8>);
     let key = MyKey::from(vec![0x42u8; 32]);
-
-    let _ = key.to_hex();
-    let _ = key.to_base64url();
-    let _ = key.ct_eq(&key);
+    let _ = key.expose_secret().to_hex();
+    let _ = key.expose_secret().to_base64url();
+    let _ = key.expose_secret().ct_eq(key.expose_secret());
 }
 
 #[test]
 fn hex_string_validates_and_decodes() {
     let valid = "a1b2c3d4e5f67890".to_string();
     let hex = HexString::new(valid).unwrap();
-
     assert_eq!(hex.expose_secret(), "a1b2c3d4e5f67890");
     assert_eq!(hex.byte_len(), 8);
     assert_eq!(
         hex.to_bytes(),
         vec![0xa1, 0xb2, 0xc3, 0xd4, 0xe5, 0xf6, 0x78, 0x90]
     );
-
     let invalid = "a1b2c3d".to_string();
     assert!(HexString::new(invalid).is_err());
 }
@@ -102,21 +100,18 @@ fn hex_string_validates_and_decodes() {
 #[test]
 fn random_hex_returns_randomhex() {
     use secure_gate::rng::FixedRng;
-
-    let hex: secure_gate::RandomHex = FixedRng::<32>::random_hex();
-
-    assert_eq!(hex.0.expose_secret().len(), 64);
-    assert!(hex.0.expose_secret().chars().all(|c| c.is_ascii_hexdigit()));
+    let hex: RandomHex = FixedRng::<32>::random_hex();
+    assert_eq!(hex.expose_secret().len(), 64);
+    assert!(hex.expose_secret().chars().all(|c| c.is_ascii_hexdigit()));
     assert_eq!(hex.to_bytes().len(), 32);
 }
 
 #[test]
 fn ct_eq_different_lengths_returns_false() {
     dynamic_alias!(TestKey, Vec<u8>);
-
     let a = TestKey::from(vec![0u8; 32]);
     let b = TestKey::from(vec![0u8; 64]);
-    assert!(!a.ct_eq(&b));
+    assert!(!a.expose_secret().ct_eq(b.expose_secret()));
 }
 
 #[test]

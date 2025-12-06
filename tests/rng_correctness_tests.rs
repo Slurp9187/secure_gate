@@ -74,7 +74,7 @@ fn ct_eq_different_lengths() {
     let a_inner: secure_gate::Dynamic<Vec<u8>> = a.into_inner();
     let b_inner: secure_gate::Dynamic<Vec<u8>> = b.into_inner();
 
-    assert!(!a_inner.ct_eq(&b_inner));
+    assert!(!a_inner.expose_secret().ct_eq(b_inner.expose_secret()));
 }
 
 #[test]

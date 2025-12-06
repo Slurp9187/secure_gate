@@ -1,61 +1,71 @@
+// ==========================================================================
 // src/conversions.rs
+// ==========================================================================
 #[cfg(feature = "conversions")]
 use alloc::string::String;
-
 #[cfg(feature = "conversions")]
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 #[cfg(feature = "conversions")]
 use base64::Engine;
 
-#[cfg(all(feature = "rand", feature = "conversions"))]
-use secrecy::ExposeSecret;
-
 #[cfg(feature = "conversions")]
-pub trait SecureConversionsExt: sealed::Sealed {
-    /// Returns hex in lowercase (`a-f`)
+pub trait SecureConversionsExt {
     fn to_hex(&self) -> String;
-    /// Returns hex in uppercase (`A-F`)
     fn to_hex_upper(&self) -> String;
-    /// **Removed** — `to_hex()` is already lowercase
-    // fn to_hex_lowercase(&self) -> String;
     fn to_base64url(&self) -> String;
     fn ct_eq(&self, other: &Self) -> bool;
 }
 
+// Implement for any borrowed byte slice — forces .expose_secret()!
 #[cfg(feature = "conversions")]
-mod sealed {
-    pub trait Sealed {}
-    impl Sealed for crate::Dynamic<Vec<u8>> {}
-}
-
-#[cfg(feature = "conversions")]
-impl SecureConversionsExt for crate::Dynamic<Vec<u8>> {
+impl SecureConversionsExt for [u8] {
     #[inline]
     fn to_hex(&self) -> String {
-        hex::encode(self.expose_secret()) // ← already lowercase
+        hex::encode(self)
     }
 
     #[inline]
     fn to_hex_upper(&self) -> String {
-        hex::encode_upper(self.expose_secret())
+        hex::encode_upper(self)
     }
 
     #[inline]
     fn to_base64url(&self) -> String {
-        URL_SAFE_NO_PAD.encode(self.expose_secret())
+        URL_SAFE_NO_PAD.encode(self)
     }
 
     #[inline]
     fn ct_eq(&self, other: &Self) -> bool {
-        subtle::ConstantTimeEq::ct_eq(
-            self.expose_secret().as_slice(),
-            other.expose_secret().as_slice(),
-        )
-        .into()
+        subtle::ConstantTimeEq::ct_eq(self, other).into()
     }
 }
 
-// HexString always stores lowercase
+// Also support direct &[u8; N] (common in fixed aliases)
+#[cfg(feature = "conversions")]
+impl<const N: usize> SecureConversionsExt for [u8; N] {
+    #[inline]
+    fn to_hex(&self) -> String {
+        hex::encode(self)
+    }
+
+    #[inline]
+    fn to_hex_upper(&self) -> String {
+        hex::encode_upper(self)
+    }
+
+    #[inline]
+    fn to_base64url(&self) -> String {
+        URL_SAFE_NO_PAD.encode(self)
+    }
+
+    #[inline]
+    fn ct_eq(&self, other: &Self) -> bool {
+        // Just compare as slices — subtle implements ConstantTimeEq for &[u8]
+        subtle::ConstantTimeEq::ct_eq(self.as_slice(), other.as_slice()).into()
+    }
+}
+
+// HexString — unchanged, still stores lowercase
 #[cfg(feature = "conversions")]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HexString(crate::Dynamic<String>);
@@ -89,12 +99,13 @@ impl core::ops::Deref for HexString {
 }
 
 #[cfg(feature = "conversions")]
-impl ExposeSecret<String> for HexString {
+impl secrecy::ExposeSecret<String> for HexString {
     fn expose_secret(&self) -> &String {
         self.0.expose_secret()
     }
 }
 
+// RandomHex — unchanged
 #[cfg(all(feature = "rand", feature = "conversions"))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RandomHex(pub HexString);
@@ -117,15 +128,13 @@ impl RandomHex {
 #[cfg(all(feature = "rand", feature = "conversions"))]
 impl core::ops::Deref for RandomHex {
     type Target = HexString;
-    #[inline(always)]
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
 #[cfg(all(feature = "rand", feature = "conversions"))]
-impl ExposeSecret<String> for RandomHex {
-    #[inline(always)]
+impl secrecy::ExposeSecret<String> for RandomHex {
     fn expose_secret(&self) -> &String {
         self.0.expose_secret()
     }
@@ -136,8 +145,7 @@ impl<const N: usize> crate::rng::FixedRng<N> {
     pub fn random_hex() -> RandomHex {
         let rng = Self::generate();
         let bytes = rng.expose_secret();
-        let hex = hex::encode(bytes); // ← already lowercase
-        let validated = HexString(crate::Dynamic::new(hex));
-        RandomHex(validated)
+        let hex = hex::encode(bytes);
+        RandomHex(HexString(crate::Dynamic::new(hex)))
     }
 }

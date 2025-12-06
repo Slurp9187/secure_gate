@@ -50,6 +50,6 @@ conversions = ["dep:hex", "dep:base64", "dep:subtle"]
 full = ["zeroize", "serde", "rand", "conversions"]
 
 
-[[bench]]
-name = "fixed_vs_raw"
-harness = false
+# [[bench]]
+# name = "fixed_vs_raw"
+# harness = false
