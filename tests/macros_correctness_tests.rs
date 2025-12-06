@@ -1,5 +1,7 @@
+// ==========================================================================
 // tests/macros_correctness_tests.rs
-//! Exhaustive tests for macro correctness and safety
+// ==========================================================================
+// Exhaustive tests for macro correctness and safety
 
 #![cfg(test)]
 

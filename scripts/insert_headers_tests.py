@@ -1,4 +1,4 @@
-# insert_header.py   ← save this anywhere in your repo (even in scripts/)
+# insert_header_tests.py   ← save this anywhere in your repo (even in scripts/)
 import pathlib
 
 
@@ -8,25 +8,24 @@ def make_header(rel_path: str) -> str:
 
 
 def main():
-    # Find the repo root (the folder that contains the "src" directory)
+    # Find the repo root (the folder that contains the "tests" directory)
     current = pathlib.Path(__file__).resolve().parent
 
-    # Walk upwards until we find the folder that has a "src" subfolder
+    # Walk upwards until we find the folder that has a "tests" subfolder
     root = None
     for parent in [current, *current.parents]:
-        if (parent / "src").exists() and (parent / "src").is_dir():
+        if (parent / "tests").exists() and (parent / "tests").is_dir():
             root = parent
             break
 
     if root is None:
-        print("Error: Could not find a 'src' directory in this project!")
+        print("Error: Could not find a 'tests' directory in this project!")
         return
 
-    src = root / "src"
-    print(f"Found project root: {root}\nAdding headers in {src} ...\n")
+    tests = root / "tests"
+    print(f"Found project root: {root}\nAdding headers in {tests} ...\n")
 
-    for file in src.rglob("*.rs"):
-        # e.g. src/conversions.rs
+    for file in tests.rglob("*.rs"):
         rel_path = file.relative_to(root).as_posix()
         desired_header = make_header(rel_path)
 

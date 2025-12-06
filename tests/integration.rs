@@ -1,4 +1,6 @@
+// ==========================================================================
 // tests/integration.rs
+// ==========================================================================
 // Core integration tests — no macro usage here
 
 use secure_gate::{Dynamic, Fixed};

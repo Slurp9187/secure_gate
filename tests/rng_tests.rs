@@ -1,5 +1,7 @@
+// ==========================================================================
 // tests/rng_tests.rs
-//! Public RNG API tests (requires "rand" feature)
+// ==========================================================================
+// Public RNG API tests (requires "rand" feature)
 
 #![cfg(feature = "rand")]
 

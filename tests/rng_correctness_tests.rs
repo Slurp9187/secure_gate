@@ -1,5 +1,7 @@
+// ==========================================================================
 // tests/rng_correctness_tests.rs
-//! Exhaustive tests for random-only types and aliases
+// ==========================================================================
+// Exhaustive tests for random-only types and aliases
 
 #![cfg(feature = "rand")]
 
