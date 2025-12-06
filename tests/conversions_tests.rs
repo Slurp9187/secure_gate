@@ -1,10 +1,9 @@
 // ==========================================================================
 // tests/conversions_tests.rs
 // ==========================================================================
-
 #![cfg(feature = "conversions")]
 
-use secure_gate::{dynamic_alias, SecureConversionsExt};
+use secure_gate::{dynamic_alias, HexString, SecureConversionsExt};
 
 dynamic_alias!(TestKey, Vec<u8>);
 dynamic_alias!(Nonce, Vec<u8>);
@@ -47,7 +46,6 @@ fn to_base64url() {
 fn ct_eq_same_key() {
     let key1 = TestKey::from(vec![1u8; 32]);
     let key2 = TestKey::from(vec![1u8; 32]);
-
     assert!(key1.ct_eq(&key2));
 }
 
@@ -55,7 +53,6 @@ fn ct_eq_same_key() {
 fn ct_eq_different_keys() {
     let key1 = TestKey::from(vec![1u8; 32]);
     let key2 = TestKey::from(vec![2u8; 32]);
-
     let mut bytes = vec![1u8; 32];
     bytes[31] = 9;
     let key3 = TestKey::from(bytes);
@@ -71,7 +68,6 @@ fn works_on_all_dynamic_alias_sizes() {
 
     assert_eq!(nonce.to_hex().len(), 48);
     assert_eq!(small.to_hex().len(), 32);
-
     assert_eq!(nonce.to_base64url().len(), 32);
     assert_eq!(small.to_base64url().len(), 22);
 }
@@ -79,7 +75,6 @@ fn works_on_all_dynamic_alias_sizes() {
 #[test]
 fn trait_is_available_on_dynamic_alias_types() {
     dynamic_alias!(MyKey, Vec<u8>);
-
     let key = MyKey::from(vec![0x42u8; 32]);
 
     let _ = key.to_hex();
@@ -87,12 +82,11 @@ fn trait_is_available_on_dynamic_alias_types() {
     let _ = key.ct_eq(&key);
 }
 
-#[cfg(feature = "conversions")]
 #[test]
 fn hex_string_validates_and_decodes() {
-    use secure_gate::HexString;
-    let valid = "a1b2c3d4e5f67890".to_string(); // 16 chars (8 bytes)
+    let valid = "a1b2c3d4e5f67890".to_string();
     let hex = HexString::new(valid).unwrap();
+
     assert_eq!(hex.expose_secret(), "a1b2c3d4e5f67890");
     assert_eq!(hex.byte_len(), 8);
     assert_eq!(
@@ -100,7 +94,7 @@ fn hex_string_validates_and_decodes() {
         vec![0xa1, 0xb2, 0xc3, 0xd4, 0xe5, 0xf6, 0x78, 0x90]
     );
 
-    let invalid = "a1b2c3d".to_string(); // Odd length
+    let invalid = "a1b2c3d".to_string();
     assert!(HexString::new(invalid).is_err());
 }
 
@@ -113,7 +107,21 @@ fn random_hex_returns_randomhex() {
 
     assert_eq!(hex.0.expose_secret().len(), 64);
     assert!(hex.0.expose_secret().chars().all(|c| c.is_ascii_hexdigit()));
+    assert_eq!(hex.to_bytes().len(), 32);
+}
 
-    let bytes_back = hex.to_bytes();
-    assert_eq!(bytes_back.len(), 32);
+#[test]
+fn ct_eq_different_lengths_returns_false() {
+    dynamic_alias!(TestKey, Vec<u8>);
+
+    let a = TestKey::from(vec![0u8; 32]);
+    let b = TestKey::from(vec![0u8; 64]);
+    assert!(!a.ct_eq(&b));
+}
+
+#[test]
+fn hex_string_accepts_uppercase() {
+    let upper = "A1B2C3D4E5F67890".to_string();
+    let hex = HexString::new(upper).unwrap();
+    assert_eq!(hex.expose_secret(), "a1b2c3d4e5f67890");
 }
