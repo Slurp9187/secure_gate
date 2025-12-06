@@ -66,7 +66,12 @@ impl DynamicRng {
         OS_RNG.with(|cell| {
             let mut rng = cell.borrow_mut();
             for _ in 0..len {
-                let byte = rng.try_next_u32().expect("OsRng failed") % 62;
+                let byte = loop {
+                    let b = rng.try_next_u32().expect("OsRng failed") % 256;
+                    if b < 248 {
+                        break b % 62;
+                    }
+                };
                 let c = if byte < 10 {
                     (b'0' + byte as u8) as char
                 } else if byte < 36 {
