@@ -32,6 +32,22 @@ impl<T> Fixed<T> {
     pub const fn new(value: T) -> Self {
         Fixed(value)
     }
+
+    /// Convert this `Fixed<T>` into a **non-cloneable** version.
+    ///
+    /// Returns `FixedNoClone<T>` — compiler-enforced **never** `Clone` or `Copy`.
+    ///
+    /// Use for master keys, HSM seeds, root passwords — anything that must exist
+    /// in **exactly one place in memory**.
+    ///
+    /// ```compile_fail
+    /// let root = Aes256Key::new(rng.gen()).no_clone();
+    /// root.clone(); // ← error: `FixedNoClone<...>` does not implement `Clone`
+    /// ```
+    #[inline(always)]
+    pub fn no_clone(self) -> crate::FixedNoClone<T> {
+        crate::FixedNoClone::new(self.0)
+    }
 }
 
 impl<T> Deref for Fixed<T> {
@@ -116,26 +132,6 @@ impl<T> Fixed<T> {
     #[inline(always)]
     pub fn into_inner(self) -> T {
         self.0
-    }
-}
-
-// ───── v0.6.0: The Crown Jewel — .no_clone() ─────
-
-impl<T> Fixed<T> {
-    /// Convert this `Fixed<T>` into a **non-cloneable** version.
-    ///
-    /// Returns `FixedNoClone<T>` — compiler-enforced **never** `Clone` or `Copy`.
-    ///
-    /// Use for master keys, HSM seeds, root passwords — anything that must exist
-    /// in **exactly one place in memory**.
-    ///
-    /// ```compile_fail
-    /// let root = Aes256Key::new(rng.gen()).no_clone();
-    /// root.clone(); // ← error: `FixedNoClone<...>` does not implement `Clone`
-    /// ```
-    #[inline(always)]
-    pub fn no_clone(self) -> crate::FixedNoClone<T> {
-        crate::FixedNoClone::new(self.0)
     }
 }
 

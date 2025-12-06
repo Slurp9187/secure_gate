@@ -1,27 +1,10 @@
 // src/rng.rs
-//! Cryptographically secure random generation for fixed-size and dynamic secrets.
+//! Cryptographically secure random generation — unified RNG-only types (0.6.0)
 //!
-//! This module provides specialized types for random secrets:
-//! - `FixedRng<N>`: Fixed-size random bytes (e.g., keys, nonces).
-//! - `DynamicRng`: Variable-length random bytes (e.g., salts, tokens).
+//! - `FixedRng<N>` → fixed-size, only via `.rng()`
+//! - `DynamicRng` → dynamic-size, only via `.rng(len)` (specialized for Vec<u8>)
 //!
-//! Both types use a thread-local `rand::rngs::OsRng` that is lazily
-//! initialized on first use. Features:
-//! - Zero heap allocation after first use (for fixed-size).
-//! - Fully `no_std`-compatible.
-//! - Panics on RNG failure (standard in high-assurance crypto).
-//!
-//! # Examples
-//!
-//! ```
-//! use secure_gate::rng::{DynamicRng, FixedRng};
-//!
-//! let key = FixedRng::<32>::rng();     // Correct: generates random
-//! let salt = DynamicRng::rng(16);      // Correct: generates random
-//!
-//! assert_eq!(key.len(), 32);
-//! assert_eq!(salt.len(), 16);
-//! ```
+//! Freshness is compiler-enforced: no way to construct from existing data.
 
 use crate::{Dynamic, Fixed};
 use rand::rngs::OsRng;
@@ -32,39 +15,39 @@ thread_local! {
     static OS_RNG: RefCell<OsRng> = const { RefCell::new(OsRng) };
 }
 
-/// Fixed-size random-only secret.
+/// Fixed-size random-only secret (e.g. `fixed_alias_rng!(Aes256Key, 32)`)
 pub struct FixedRng<const N: usize>(Fixed<[u8; N]>);
 
 impl<const N: usize> FixedRng<N> {
-    /// Generate a new instance filled with cryptographically secure randomness.
+    /// Generate cryptographically secure random bytes.
     ///
-    /// This is the **only** way to construct a `FixedRng` — there is no `new()` that takes data.
+    /// This is the **only** way to construct this type.
     #[inline(always)]
     pub fn rng() -> Self {
         let mut bytes = [0u8; N];
         OS_RNG.with(|rng| {
-            rng.borrow_mut()
-                .try_fill_bytes(&mut bytes)
-                .expect("OsRng failed to fill bytes — this should never happen");
+            let _ = (*rng.borrow_mut()).try_fill_bytes(&mut bytes);
         });
-        Self(Fixed::new(bytes))
+        Self(Fixed(bytes))
     }
 
     /// Expose the secret bytes.
     #[inline(always)]
     pub fn expose_secret(&self) -> &[u8; N] {
-        self.0.expose_secret()
+        &self.0 .0
     }
 }
 
 impl<const N: usize> core::ops::Deref for FixedRng<N> {
     type Target = Fixed<[u8; N]>;
+    #[inline(always)]
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
 impl<const N: usize> core::ops::DerefMut for FixedRng<N> {
+    #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -76,49 +59,39 @@ impl<const N: usize> core::fmt::Debug for FixedRng<N> {
     }
 }
 
-impl<const N: usize> Default for FixedRng<N> {
-    /// Convenience: `Default` generates random bytes.
-    ///
-    /// Allows `let key = FixedRng::<32>::default();`
-    #[inline(always)]
-    fn default() -> Self {
-        Self::rng()
-    }
-}
-
-/// Dynamic-size random-only secret (always backed by `Vec<u8>`).
+/// Dynamic-size random-only secret (specialized for Vec<u8>)
 pub struct DynamicRng(Dynamic<Vec<u8>>);
 
 impl DynamicRng {
-    /// Generate a new instance of the given length filled with cryptographically secure randomness.
+    /// Generate exactly `len` cryptographically secure random bytes.
     ///
-    /// This is the **only** way to construct a `DynamicRng`.
+    /// This is the **only** way to construct this type.
     #[inline(always)]
     pub fn rng(len: usize) -> Self {
         let mut bytes = vec![0u8; len];
         OS_RNG.with(|rng| {
-            rng.borrow_mut()
-                .try_fill_bytes(&mut bytes)
-                .expect("OsRng failed to fill bytes — this should never happen");
+            let _ = (*rng.borrow_mut()).try_fill_bytes(&mut bytes);
         });
-        Self(Dynamic::new(bytes))
+        Self(Dynamic(Box::new(bytes)))
     }
 
     /// Expose the secret bytes as a slice.
     #[inline(always)]
     pub fn expose_secret(&self) -> &[u8] {
-        self.0.expose_secret().as_slice()
+        &self.0 .0
     }
 }
 
 impl core::ops::Deref for DynamicRng {
     type Target = Dynamic<Vec<u8>>;
+    #[inline(always)]
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
 impl core::ops::DerefMut for DynamicRng {
+    #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -127,24 +100,5 @@ impl core::ops::DerefMut for DynamicRng {
 impl core::fmt::Debug for DynamicRng {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str("[REDACTED_RANDOM]")
-    }
-}
-
-/// Optional: convenience trait if users want to write `FixedRng::<32>::random()`
-///
-/// This is **not required** by issue #27 — in fact, avoiding it is better for clarity.
-/// But if you want to keep backward compatibility or ergonomics, this is safe.
-#[cfg(feature = "rand")]
-pub trait SecureRandomExt {
-    fn rng() -> Self
-    where
-        Self: Sized;
-}
-
-#[cfg(feature = "rand")]
-impl<const N: usize> SecureRandomExt for FixedRng<N> {
-    #[inline(always)]
-    fn rng() -> Self {
-        Self::rng()
     }
 }

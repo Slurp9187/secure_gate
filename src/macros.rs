@@ -1,87 +1,68 @@
 // src/macros.rs
-//! Ergonomic macros for creating secure secret aliases.
+//! secure-gate 0.6.0 — The Final Macro System (3×2 Matrix)
+//! Pure type aliases only — all methods provided via blanket impls.
 
-/// Creates a type alias for a fixed-size secret.
-///
-/// # Example
-///
-/// ```
-/// use secure_gate::fixed_alias;
-///
-/// fixed_alias!(Aes256Key, 32);
-///
-/// let key: Aes256Key = [0u8; 32].into();
-/// assert_eq!(key.len(), 32);
-/// ```
+/// Concrete fixed-size secret (e.g. Aes256Key, Nonce24)
 #[macro_export]
 macro_rules! fixed_alias {
     ($name:ident, $size:literal) => {
-        /// Fixed-size secret of exactly `$size` bytes.
+        #[doc = concat!("Fixed-size secure secret (", $size, " bytes)")]
         pub type $name = $crate::Fixed<[u8; $size]>;
     };
 }
 
-/// Creates a type alias for a heap-allocated secure secret.
-///
-/// # Example
-///
-/// ```
-/// use secure_gate::dynamic_alias;
-///
-/// dynamic_alias!(Password, String);
-///
-/// let pw: Password = "hunter2".into();
-/// assert_eq!(pw.expose_secret(), "hunter2");
-/// ```
+/// Generic fixed-size secret base (e.g. SecureSpan<24>)
 #[macro_export]
-macro_rules! dynamic_alias {
-    ($name:ident, $ty:ty) => {
-        pub type $name = $crate::Dynamic<$ty>;
+macro_rules! fixed_generic_alias {
+    ($name:ident, $doc:literal) => {
+        #[doc = $doc]
+        pub type $name<const N: usize> = $crate::Fixed<[u8; N]>;
+    };
+    ($name:ident) => {
+        #[doc = "Fixed-size secure byte buffer"]
+        pub type $name<const N: usize> = $crate::Fixed<[u8; N]>;
     };
 }
 
-/// Creates a type alias for a **random-only** fixed-size secret.
-///
-/// Requires the `rand` feature.
-///
-/// # Example
-///
-/// ```
-/// use secure_gate::fixed_alias_rng;
-///
-/// #[cfg(feature = "rand")]
-/// fixed_alias_rng!(Aes256Key, 32);
-///
-/// #[cfg(feature = "rand")]
-/// let key = Aes256Key::rng();
-/// ```
+/// Fixed-size RNG-only secret
 #[macro_export]
 macro_rules! fixed_alias_rng {
     ($name:ident, $size:literal) => {
-        #[cfg(feature = "rand")]
+        #[doc = concat!("Random-only fixed-size secret (", $size, " bytes)")]
         pub type $name = $crate::rng::FixedRng<$size>;
     };
 }
 
-/// Creates a type alias for a **random-only** dynamic-length secret.
-///
-/// Requires the `rand` feature.
-///
-/// # Example
-///
-/// ```
-/// use secure_gate::dynamic_alias_rng;
-///
-/// #[cfg(feature = "rand")]
-/// dynamic_alias_rng!(Salt);
-///
-/// #[cfg(feature = "rand")]
-/// let salt = Salt::rng(32);
-/// ```
+/// Concrete heap secret (e.g. Password, JwtKey)
+#[macro_export]
+macro_rules! dynamic_alias {
+    ($name:ident, $inner:ty) => {
+        #[doc = concat!("Secure heap-allocated ", stringify!($inner))]
+        pub type $name = $crate::Dynamic<$inner>;
+    };
+}
+
+/// Generic heap secret base
+#[macro_export]
+macro_rules! dynamic_generic_alias {
+    ($name:ident, $inner:ty, $doc:literal) => {
+        #[doc = $doc]
+        pub type $name = $crate::Dynamic<$inner>;
+    };
+    ($name:ident, $inner:ty) => {
+        $crate::dynamic_generic_alias!(
+            $name,
+            $inner,
+            concat!("Secure heap-allocated ", stringify!($inner))
+        );
+    };
+}
+
+/// Dynamic RNG-only secret
 #[macro_export]
 macro_rules! dynamic_alias_rng {
-    ($name:ident) => {
-        #[cfg(feature = "rand")]
-        pub type $name = $crate::rng::DynamicRng;
+    ($name:ident, $inner:ty) => {
+        #[doc = concat!("Random-only heap secret (", stringify!($inner), ")")]
+        pub type $name = $crate::rng::DynamicRng<$inner>;
     };
 }
