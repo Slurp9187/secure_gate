@@ -31,16 +31,24 @@ criterion = { version = "0.5", features = ["html_reports"] }
 # Features
 # ──────────────────────────────────────────────────────────────
 [features]
+# Keep exactly this — perfect balance
 default = ["zeroize"]
 
-# Core features — unchanged from 0.5.7
+# Core safety — almost everyone wants this
 zeroize = ["dep:zeroize", "dep:secrecy"]
+
+# Optional but extremely common
 serde = ["dep:serde"]
+
+# Cryptographic randomness — opt-in
 rand = ["dep:rand"]
 
-# NEW: optional ergonomic conversions
-# Only adds the three deps above + enables `alloc` (already pulled by zeroize)
+# Ergonomic conversions — opt-in, very popular
 conversions = ["dep:hex", "dep:base64", "dep:subtle"]
+
+# Convenience super-set — recommended in docs
+full = ["zeroize", "serde", "rand", "conversions"]
+
 
 [[bench]]
 name = "fixed_vs_raw"

@@ -40,17 +40,17 @@ use secrecy::{ExposeSecret, SecretBox};
 /// Re-export of `zeroize::Zeroizing<T>` for stack-allocated secrets.
 ///
 /// This is the canonical zeroizing wrapper for fixed-size data.
-pub type FixedZeroizing<T> = Zeroizing<T>;
+pub type FixedNoClone<T> = Zeroizing<T>;
 
 #[cfg(feature = "zeroize")]
 /// Zeroizing wrapper for heap-allocated secrets.
 ///
 /// Uses `secrecy::SecretBox<T>` internally to prevent accidental cloning
 /// while still providing zeroization of the full allocation (including spare capacity).
-pub struct DynamicZeroizing<T: ?Sized + Zeroize>(SecretBox<T>);
+pub struct DynamicNoClone<T: ?Sized + Zeroize>(SecretBox<T>);
 
 #[cfg(feature = "zeroize")]
-impl<T: ?Sized + Zeroize> DynamicZeroizing<T> {
+impl<T: ?Sized + Zeroize> DynamicNoClone<T> {
     /// Creates a new `DynamicZeroizing` from a boxed value.
     ///
     /// The boxed value will be zeroed (including spare capacity) on drop.
@@ -61,14 +61,14 @@ impl<T: ?Sized + Zeroize> DynamicZeroizing<T> {
 }
 
 #[cfg(feature = "zeroize")]
-impl<T: ?Sized + Zeroize> core::fmt::Debug for DynamicZeroizing<T> {
+impl<T: ?Sized + Zeroize> core::fmt::Debug for DynamicNoClone<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str("[REDACTED]")
     }
 }
 
 #[cfg(feature = "zeroize")]
-impl<S: ?Sized + Zeroize> ExposeSecret<S> for DynamicZeroizing<S> {
+impl<S: ?Sized + Zeroize> ExposeSecret<S> for DynamicNoClone<S> {
     #[inline(always)]
     fn expose_secret(&self) -> &S {
         self.0.expose_secret()
@@ -76,18 +76,18 @@ impl<S: ?Sized + Zeroize> ExposeSecret<S> for DynamicZeroizing<S> {
 }
 
 #[cfg(feature = "zeroize")]
-impl<T: Zeroize + DefaultIsZeroes> Zeroize for DynamicZeroizing<T> {
+impl<T: Zeroize + DefaultIsZeroes> Zeroize for DynamicNoClone<T> {
     fn zeroize(&mut self) {
         self.0.zeroize();
     }
 }
 
 #[cfg(feature = "zeroize")]
-impl<T: ?Sized + Zeroize> ZeroizeOnDrop for DynamicZeroizing<T> {}
+impl<T: ?Sized + Zeroize> ZeroizeOnDrop for DynamicNoClone<T> {}
 
 /// Convenience conversions from non-zeroizing wrappers.
 #[cfg(feature = "zeroize")]
-impl<T: Zeroize> From<crate::Fixed<T>> for FixedZeroizing<T> {
+impl<T: Zeroize> From<crate::Fixed<T>> for FixedNoClone<T> {
     #[inline(always)]
     fn from(fixed: crate::Fixed<T>) -> Self {
         Zeroizing::new(fixed.0)
@@ -95,7 +95,7 @@ impl<T: Zeroize> From<crate::Fixed<T>> for FixedZeroizing<T> {
 }
 
 #[cfg(feature = "zeroize")]
-impl<T: ?Sized + Zeroize> From<crate::Dynamic<T>> for DynamicZeroizing<T> {
+impl<T: ?Sized + Zeroize> From<crate::Dynamic<T>> for DynamicNoClone<T> {
     #[inline(always)]
     fn from(dynamic: crate::Dynamic<T>) -> Self {
         Self(SecretBox::new(dynamic.0))
@@ -125,7 +125,7 @@ impl<T: ?Sized + Zeroize> ZeroizeOnDrop for crate::Dynamic<T> {}
 
 /// Ergonomic `.into()` support for zeroizing heap secrets.
 #[cfg(feature = "zeroize")]
-impl<T: Zeroize + Send + 'static> From<T> for DynamicZeroizing<T> {
+impl<T: Zeroize + Send + 'static> From<T> for DynamicNoClone<T> {
     #[inline(always)]
     fn from(value: T) -> Self {
         Self::new(Box::new(value))
@@ -133,7 +133,7 @@ impl<T: Zeroize + Send + 'static> From<T> for DynamicZeroizing<T> {
 }
 
 #[cfg(feature = "zeroize")]
-impl<T: Zeroize + DefaultIsZeroes + Send + 'static> From<Box<T>> for DynamicZeroizing<T> {
+impl<T: Zeroize + DefaultIsZeroes + Send + 'static> From<Box<T>> for DynamicNoClone<T> {
     #[inline(always)]
     fn from(boxed: Box<T>) -> Self {
         Self::new(boxed)
@@ -141,7 +141,7 @@ impl<T: Zeroize + DefaultIsZeroes + Send + 'static> From<Box<T>> for DynamicZero
 }
 
 #[cfg(feature = "zeroize")]
-impl From<&str> for DynamicZeroizing<String> {
+impl From<&str> for DynamicNoClone<String> {
     #[inline(always)]
     fn from(s: &str) -> Self {
         Self::new(Box::new(s.to_string()))

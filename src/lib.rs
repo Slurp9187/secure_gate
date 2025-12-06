@@ -63,7 +63,7 @@ mod macros;
 
 // Feature-gated modules
 #[cfg(feature = "zeroize")]
-mod zeroize;
+mod no_clone;
 
 #[cfg(feature = "serde")]
 mod serde;
@@ -77,7 +77,9 @@ pub use fixed::Fixed;
 
 // Zeroize integration (opt-in)
 #[cfg(feature = "zeroize")]
-pub use zeroize::{DynamicZeroizing, FixedZeroizing};
+pub use no_clone::DynamicNoClone;
+#[cfg(feature = "zeroize")]
+pub use no_clone::FixedNoClone;
 
 // Re-export Zeroizing cleanly — no privacy conflict
 #[cfg(feature = "zeroize")]
@@ -91,11 +93,13 @@ pub use ::zeroize::{Zeroize, ZeroizeOnDrop};
 pub mod rng;
 
 #[cfg(feature = "rand")]
-pub use rng::{RandomBytes, SecureRandomExt};
+pub use rng::{DynamicRng, FixedRng, SecureRandomExt};
 
 // Conversions integration (opt-in)
 #[cfg(feature = "conversions")]
 pub use conversions::SecureConversionsExt;
 
+#[cfg(all(feature = "rand", feature = "conversions"))]
+pub use conversions::HexString;
 #[cfg(all(feature = "rand", feature = "conversions"))]
 pub use conversions::RandomHex;

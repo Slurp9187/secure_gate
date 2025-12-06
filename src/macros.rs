@@ -1,110 +1,11 @@
 // src/macros.rs
-//! Ergonomic macros for creating and aliasing secrets.
+//! Ergonomic macros for creating secure secret aliases.
 //!
-//! These macros provide concise syntax for instantiating [`Fixed`], [`Dynamic`],
-//! and their zeroizing variants, as well as defining type aliases for common
-//! secret types.
-//!
-//! # Examples
-//!
-//! ```
-//! use secure_gate::{dynamic_alias, fixed_alias, secure};
-//!
-//! fixed_alias!(Aes256Key, 32);
-//! dynamic_alias!(Password, String);
-//!
-//! let key = secure!([u8; 32], [42u8; 32]);
-//! let pw = secure!(String, "hunter2".to_string());
-//! ```
+//! - `fixed_alias!` → alias for `Fixed<[u8; N]>`
+//! - `fixed_alias_rng!` → alias for `FixedRng<N>` (random-only)
+//! - `dynamic_alias!` → alias for `Dynamic<T>`
+//! - `dynamic_alias_rng!` → alias for `DynamicRng` (random-only)
 
-// /// Creates a secret wrapper around the given value.
-// ///
-// /// Supports fixed-size byte arrays and heap-allocated types like `String` and `Vec<u8>`.
-// ///
-// /// # Examples
-// ///
-// /// ```
-// /// use secure_gate::secure;
-// ///
-// /// // Fixed-size secret
-// /// let key = secure!([u8; 32], [42u8; 32]);
-// /// assert_eq!(key.expose_secret(), &[42u8; 32]);
-// ///
-// /// // Heap-allocated secret
-// /// let pw = secure!(String, "hunter2".to_string());
-// /// assert_eq!(pw.expose_secret(), "hunter2");
-// ///
-// /// // Alternative heap syntax
-// /// let data: secure_gate::Dynamic<Vec<u8>> = secure!(heap Vec<u8>, vec![1u8, 2u8, 3u8]);
-// /// assert_eq!(data.as_slice(), &[1u8, 2u8, 3u8]);
-// /// ```
-// #[macro_export]
-// macro_rules! secure {
-//     ([u8; $N:literal], $expr:expr $(,)?) => {
-//         $crate::Fixed::new($expr)
-//     };
-//     ($ty:ty, $expr:expr $(,)?) => {
-//         $crate::Fixed::<$ty>::new($expr)
-//     };
-//     (String, $expr:expr $(,)?) => {
-//         $crate::Dynamic::new($expr)
-//     };
-//     (Vec<u8>, $expr:expr $(,)?) => {
-//         $crate::Dynamic::new($expr)
-//     };
-//     (heap $ty:ty, $expr:expr $(,)?) => {
-//         $crate::Dynamic::new($expr)
-//     };
-// }
-
-// /// Creates a zeroizing secret that automatically wipes itself on drop.
-// ///
-// /// Requires the `zeroize` feature.
-// ///
-// /// # Examples
-// ///
-// /// ```
-// /// use secure_gate::secure_zeroizing;
-// ///
-// /// #[cfg(feature = "zeroize")]
-// /// {
-// ///     use zeroize::Zeroizing;
-// ///     use secrecy::ExposeSecret;
-// ///
-// ///     // Fixed-size zeroizing secret (uses zeroize::Zeroizing directly)
-// ///     let key: Zeroizing<[u8; 32]> = secure_zeroizing!([u8; 32], [42u8; 32]);
-// ///     assert_eq!(key[..], [42u8; 32]);
-// ///
-// ///     // Heap-allocated zeroizing secret
-// ///     let pw = secure_zeroizing!(heap String, "hunter2".to_string().into_boxed_str());
-// ///     assert_eq!(pw.expose_secret(), "hunter2");
-// /// }
-// /// ```
-// #[macro_export]
-// macro_rules! secure_zeroizing {
-//     ($ty:ty, $expr:expr $(,)?) => {
-//         $crate::FixedZeroizing::new($expr)
-//     };
-//     (heap $ty:ty, $expr:expr $(,)?) => {
-//         $crate::DynamicZeroizing::new($expr)
-//     };
-// }
-
-/// Defines a type alias for a fixed-size byte secret.
-///
-/// The resulting type inherits all methods from [`Fixed<[u8; N]>`], including
-/// constructors like `from_slice` and `From<[u8; N]>`.
-///
-/// # Examples
-///
-/// ```
-/// use secure_gate::fixed_alias;
-///
-/// fixed_alias!(Aes256Key, 32);
-///
-/// let key: Aes256Key = [42u8; 32].into();
-/// assert_eq!(key.expose_secret(), &[42u8; 32]);
-/// ```
 #[macro_export]
 macro_rules! fixed_alias {
     ($name:ident, $size:literal) => {
@@ -113,30 +14,77 @@ macro_rules! fixed_alias {
     };
 }
 
-/// Defines a type alias for a dynamic (heap-allocated) secret.
+#[macro_export]
+macro_rules! fixed_generic_alias {
+    ($name:ident, $doc:literal) => {
+        #[doc = $doc]
+        pub type $name<const N: usize> = $crate::Fixed<[u8; N]>;
+    };
+    ($name:ident) => {
+        #[doc = "Fixed-size secure byte buffer (zero-cost wrapper around secure_gate::Fixed)"]
+        pub type $name<const N: usize> = $crate::Fixed<[u8; N]>;
+    };
+}
+
+/// Creates a type alias for a **random-only** fixed-size secret.
 ///
-/// The resulting type inherits all methods and conversions from [`Dynamic<T>`].
-///
-/// # Examples
-///
+/// Usage:
 /// ```
-/// use secure_gate::dynamic_alias;
+/// use secure_gate::fixed_alias_rng;
 ///
-/// dynamic_alias!(Password, String);
+/// fixed_alias_rng!(Aes256Key, 32);
 ///
-/// let pw: Password = "hunter2".into();
-/// assert_eq!(pw.expose_secret(), "hunter2");
+/// let key = Aes256Key::rng();  // generates fresh random key
 /// ```
+#[macro_export]
+macro_rules! fixed_alias_rng {
+    ($name:ident, $size:literal) => {
+        /// Random-only fixed-size secret (`FixedRng<$size>`).
+        ///
+        /// Construct using `.rng()` — this is the only way to create it.
+        pub type $name = $crate::rng::FixedRng<$size>;
+    };
+}
+
 #[macro_export]
 macro_rules! dynamic_alias {
     ($name:ident, $ty:ty) => {
+        /// Heap-allocated secure secret.
         pub type $name = $crate::Dynamic<$ty>;
     };
 }
 
 #[macro_export]
-macro_rules! fixed_alias_rng {
-    ($name:ident, $size:literal) => {
-        pub type $name = $crate::RandomBytes<$size>;
+macro_rules! dynamic_generic_alias {
+    ($name:ident, $inner:ty, $doc:literal) => {
+        #[doc = $doc]
+        pub type $name = $crate::Dynamic<$inner>;
+    };
+    ($name:ident, $inner:ty) => {
+        $crate::dynamic_generic_alias!(
+            $name,
+            $inner,
+            concat!("Secure heap-allocated ", stringify!($inner))
+        );
+    };
+}
+
+/// Creates a type alias for a **random-only** dynamic secret.
+///
+/// Usage:
+/// ```
+/// use secure_gate::dynamic_alias_rng;
+///
+/// dynamic_alias_rng!(Salt, Vec<u8>);
+///
+/// let salt = Salt::rng(32);
+/// ```
+#[macro_export]
+macro_rules! dynamic_alias_rng {
+    ($name:ident) => {
+        /// Random-only dynamic secret (`DynamicRng`).
+        ///
+        /// Construct using `.rng(len)` — this is the only way to create it.
+        pub type $name = $crate::rng::DynamicRng;
     };
 }

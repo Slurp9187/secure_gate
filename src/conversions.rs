@@ -9,21 +9,6 @@
 //! intentional, and visible in code reviews.
 //!
 //! Enabled via the `conversions` feature (zero impact when disabled).
-//!
-//! # Correct usage (v0.5.9+)
-//!
-//! ```
-//! use secure_gate::{fixed_alias, SecureConversionsExt};
-//!
-//! fixed_alias!(Aes256Key, 32);
-//!
-//! let key1 = Aes256Key::from([0x42; 32]);
-//! let key2 = Aes256Key::from([0x42; 32]);
-//!
-//! let hex = key1.expose_secret().to_hex();
-//! let b64 = key1.expose_secret().to_base64url();
-//! assert!(key1.expose_secret().ct_eq(key2.expose_secret()));
-//! ```
 
 #[cfg(feature = "conversions")]
 use alloc::string::String;
@@ -123,56 +108,35 @@ impl<const N: usize> crate::Fixed<[u8; N]> {
     }
 }
 
-// ───── Compile-time safety net — prevents accidental re-introduction of the bad impl ─────
-//
-// We use a negative impl to trigger a compile error if someone adds an impl of
-// SecureConversionsExt for Fixed<[u8; N]> in the future.
-//
-// This is a well-known Rust pattern (used by crates like `serde`, `thiserror`, etc.)
-// to enforce API invariants at compile time.
-
+// ───── Compile-time safety net ─────
 #[cfg(feature = "conversions")]
 trait _AssertNoImplForFixed {}
 #[cfg(feature = "conversions")]
 impl<T> _AssertNoImplForFixed for T where T: SecureConversionsExt {}
 
 #[cfg(feature = "conversions")]
-impl<const N: usize> _AssertNoImplForFixed for crate::Fixed<[u8; N]> {
-    //  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    //  If anyone ever adds `impl SecureConversionsExt for Fixed<[u8; N]>`, this line
-    //  will cause a compile error: "conflicting implementation"
-    //  → immediate, loud failure instead of silent security regression
-}
+impl<const N: usize> _AssertNoImplForFixed for crate::Fixed<[u8; N]> {}
 
-// ───── New: HexString newtype for type-safe hex handling ─────
-
-/// Newtype for validated hex strings with extensions.
-///
-/// Deref to Dynamic<String> to inherit String methods/properties.
-/// Enforces explicit exposure via expose_secret().
+// ───── New: HexString newtype ─────
 #[cfg(feature = "conversions")]
 #[derive(Clone, Debug, PartialEq)]
 pub struct HexString(crate::Dynamic<String>);
 
 #[cfg(feature = "conversions")]
 impl HexString {
-    /// Creates a new HexString if the input is valid hex (even length, 0-9a-fA-F chars).
-    /// Normalizes to lowercase.
     pub fn new(s: String) -> Result<Self, &'static str> {
         let lower = s.to_lowercase();
         if lower.len() % 2 != 0 || !lower.chars().all(|c| c.is_ascii_hexdigit()) {
-            Err("Invalid hex: must be even length with 0-9a-f chars")
+            Err("Invalid hex: must be even length with 0-9a-fA-F chars")
         } else {
             Ok(Self(crate::Dynamic::new(lower)))
         }
     }
 
-    /// Decodes back to bytes (safe due to validation).
     pub fn to_bytes(&self) -> Vec<u8> {
         hex::decode(self.expose_secret()).expect("Validated hex")
     }
 
-    /// Property: Original byte length (half of hex len).
     pub fn byte_len(&self) -> usize {
         self.expose_secret().len() / 2
     }
@@ -193,26 +157,21 @@ impl ExposeSecret<String> for HexString {
     }
 }
 
-/// Newtype for random hex strings — wraps HexString for freshness semantics.
-///
-/// Construction only via RNG → guarantees it's from random bytes.
+// ───── New: RandomHex newtype ─────
 #[cfg(all(feature = "rand", feature = "conversions"))]
 #[derive(Clone, Debug, PartialEq)]
 pub struct RandomHex(pub HexString);
 
 #[cfg(all(feature = "rand", feature = "conversions"))]
 impl RandomHex {
-    /// Internal constructor — only from validated hex.
     pub fn new(hex: HexString) -> Self {
         Self(hex)
     }
 
-    /// Decodes back to bytes (inherits from HexString).
     pub fn to_bytes(&self) -> Vec<u8> {
         self.0.to_bytes()
     }
 
-    /// Property: Original byte length (inherits).
     pub fn byte_len(&self) -> usize {
         self.0.byte_len()
     }
@@ -235,17 +194,37 @@ impl ExposeSecret<String> for RandomHex {
     }
 }
 
+// src/conversions.rs — add this block (replaces your current one)
+#[cfg(all(feature = "rand", feature = "conversions"))]
+impl<const N: usize> crate::rng::FixedRng<N> {
+    /// Generate a fresh random key of this size and return it as a validated `RandomHex`.
+    ///
+    /// This is a **static method** — call it directly on the type:
+    ///
+    /// ```
+    /// fixed_alias_rng!(Aes256Key, 32);
+    /// let hex = Aes256Key::random_hex();  // Works perfectly!
+    /// ```
+    #[inline(always)]
+    pub fn random_hex() -> RandomHex {
+        let rng = Self::rng(); // generates fresh random bytes
+        let hex_str = rng.expose_secret().to_hex();
+        let hex_string =
+            HexString::new(hex_str).expect("hex::encode always produces valid lowercase hex");
+        RandomHex::new(hex_string)
+    }
+}
+
 #[cfg(all(feature = "rand", feature = "conversions"))]
 #[test]
-fn random_hex_returns_randomhex() {
-    use crate::{fixed_alias_rng, SecureRandomExt};
+fn random_hex_works_with_alias() {
+    use crate::fixed_alias_rng;
 
     fixed_alias_rng!(HexKey, 32);
 
-    let hex = HexKey::random_hex();
-    let _: RandomHex = hex;
+    let hex: RandomHex = HexKey::random_hex();
 
-    assert_eq!(hex.expose_secret().len(), 64);
+    assert_eq!(hex.expose_secret().len(), 64); // 32 bytes → 64 hex chars
     assert!(hex.expose_secret().chars().all(|c| c.is_ascii_hexdigit()));
 
     let bytes_back = hex.to_bytes();

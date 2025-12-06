@@ -5,9 +5,9 @@
 
 #![cfg(feature = "rand")]
 
-use secure_gate::{fixed_alias_rng, RandomBytes, SecureRandomExt}; // ← THIS LINE WAS MISSING
+use secure_gate::{fixed_alias_rng, FixedRng, SecureRandomExt}; // ← THIS LINE WAS MISSING
 
-fn expose<const N: usize>(rb: &RandomBytes<N>) -> &[u8; N] {
+fn expose<const N: usize>(rb: &FixedRng<N>) -> &[u8; N] {
     rb.expose_secret()
 }
 

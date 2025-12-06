@@ -1,4 +1,8 @@
 /code_packages
 /target
-*.bak
+
 Cargo.lock
+
+*.bak
+*.del
+*.mute
