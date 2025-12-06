@@ -1,7 +1,7 @@
 // fuzz/fuzz_targets/mut.rs
 //
-// Stress mutation, zeroization, builder paths, and nested secure types
-// (v0.5.0 – SecureGate, SecurePasswordBuilder, etc. are gone; use Dynamic<T>)
+// Stress mutation, zeroization, and nested secure types
+// Fully updated for v0.6.0 — no Deref, explicit exposure only
 #![no_main]
 use arbitrary::{Arbitrary, Unstructured};
 use libfuzzer_sys::fuzz_target;
@@ -55,7 +55,7 @@ fuzz_target!(|data: &[u8]| {
                 s.push('🚀');
             }
         }
-        pw.finish_mut(); // Apply shrink_to_fit
+        pw.finish_mut();
 
         if text.len() % 2 == 0 {
             pw.zeroize();
@@ -81,14 +81,13 @@ fuzz_target!(|data: &[u8]| {
 
     // 3. Fixed-size array + clone isolation
     let mut key = fixed_32;
-    let original_first_byte = key[0]; // ← capture before mutation
+    let original_first_byte = key.expose_secret()[0]; // ← fixed: no Deref
     if data.len() > 1 {
-        key[0] = !key[0];
-        if original_first_byte == key[0] {
+        key.expose_secret_mut()[0] = !key.expose_secret()[0]; // ← fixed: no Deref
+        if original_first_byte == key.expose_secret()[0] {
             panic!("Isolation failed");
         }
     }
-    // No need for explicit drop — Fixed<[u8; N]> implements Copy, so drop does nothing
 
     // 4. Nested secure types
     let nested = Dynamic::<Dynamic<Vec<u8>>>::new(Dynamic::new(data.to_vec()));
@@ -102,13 +101,12 @@ fuzz_target!(|data: &[u8]| {
     // 5. Edge cases
     if data.len() >= 2 {
         let mut small = Fixed::new([data[0], data[1]]);
-        small[0] = data[0].wrapping_add(1);
-        // No need for explicit drop — Fixed<[u8; N]> implements Copy, so drop does nothing
+        small.expose_secret_mut()[0] = data[0].wrapping_add(1); // ← fixed
     }
 
     let mut empty_vec = Dynamic::<Vec<u8>>::new(Vec::new());
     if !data.is_empty() {
-        empty_vec.push(data[0]);
+        empty_vec.expose_secret_mut().push(data[0]); // ← fixed: no Deref
     }
     #[cfg(feature = "zeroize")]
     if data[0] % 13 == 0 {
