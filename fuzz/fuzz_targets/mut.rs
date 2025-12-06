@@ -3,7 +3,7 @@
 // Stress mutation, zeroization, builder paths, and nested secure types
 // (v0.5.0 – SecureGate, SecurePasswordBuilder, etc. are gone; use Dynamic<T>)
 #![no_main]
-use arbitrary::Arbitrary;
+use arbitrary::{Arbitrary, Unstructured};
 use libfuzzer_sys::fuzz_target;
 
 use secure_gate::{Dynamic, Fixed};
@@ -17,7 +17,7 @@ fuzz_target!(|data: &[u8]| {
         return;
     }
 
-    let mut u = arbitrary::Unstructured::new(data);
+    let mut u = Unstructured::new(data);
 
     let fixed_32 = match FuzzFixed32::arbitrary(&mut u) {
         Ok(f) => f.0,
@@ -39,7 +39,7 @@ fuzz_target!(|data: &[u8]| {
         let text = pw.expose_secret().clone();
 
         {
-            let s = &mut *pw;
+            let s = pw.expose_secret_mut();
             s.clear();
             s.push_str(&text);
             let max_bytes = text.len() % 1800;
@@ -54,8 +54,8 @@ fuzz_target!(|data: &[u8]| {
             for _ in 0..append_count {
                 s.push('🚀');
             }
-            pw.finish_mut();
         }
+        pw.finish_mut(); // Apply shrink_to_fit
 
         if text.len() % 2 == 0 {
             pw.zeroize();
@@ -65,7 +65,7 @@ fuzz_target!(|data: &[u8]| {
     // 2. Dynamic<Vec<u8>> — raw buffer torture
     let mut bytes = dyn_vec.clone();
     {
-        let v = &mut *bytes;
+        let v = bytes.expose_secret_mut();
         v.clear();
         v.extend_from_slice(data);
         let new_size = v.len().saturating_add(data.len().min(500_000));
