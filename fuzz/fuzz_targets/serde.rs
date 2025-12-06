@@ -1,110 +1,123 @@
 // fuzz/fuzz_targets/serde.rs
 //
-// Fuzz target for all serde (de)serialization paths — untrusted input!
-// Fully updated for v0.6.0 — explicit exposure only, no Deref, zero silent leaks
+// secure-gate v0.6.0 — airtight serde fuzz target
+// Compiles cleanly with --all-features on Windows/PowerShell
 #![no_main]
-use arbitrary::{Arbitrary, Unstructured};
 use libfuzzer_sys::fuzz_target;
 
-use secure_gate::{Dynamic, Fixed};
-use secure_gate_fuzz::arbitrary::{FuzzDynamicString, FuzzDynamicVec, FuzzFixed32};
-
+// ─────────────────────────────────────────────────────────────────────────────
+// Imports that MUST be at the top — visible to every #[cfg] block below
+// ─────────────────────────────────────────────────────────────────────────────
 #[cfg(feature = "serde")]
-use serde_json;
-
+use arbitrary::{Arbitrary, Unstructured};
 #[cfg(feature = "serde")]
 use bincode;
-
-const MAX_INPUT: usize = 1_048_576; // 1 MiB — OOM-safe
+#[cfg(feature = "serde")]
+use secure_gate::{Dynamic, Fixed}; // ← critical: in scope everywhere
+#[cfg(feature = "serde")]
+use secure_gate_fuzz::arbitrary::{FuzzDynamicString, FuzzDynamicVec, FuzzFixed32};
+#[cfg(feature = "serde")]
+use serde_json;
 
 fuzz_target!(|data: &[u8]| {
     if data.is_empty() {
         return;
     }
 
-    let mut u = Unstructured::new(data);
-
-    let _fixed_32 = match FuzzFixed32::arbitrary(&mut u) {
-        Ok(f) => f.0,
-        Err(_) => return,
-    };
-    let dyn_vec = match FuzzDynamicVec::arbitrary(&mut u) {
-        Ok(d) => d.0,
-        Err(_) => return,
-    };
-    let dyn_str = match FuzzDynamicString::arbitrary(&mut u) {
-        Ok(d) => d.0,
-        Err(_) => return,
-    };
-
-    let fuzz_data = dyn_vec.expose_secret().as_slice();
-    if fuzz_data.len() > MAX_INPUT {
+    // serde feature disabled → just consume input
+    #[cfg(not(feature = "serde"))]
+    {
+        let _ = data.len();
         return;
     }
 
-    // -------------------------------------------------
-    // All serde-dependent code is inside these cfg blocks
-    // -------------------------------------------------
     #[cfg(feature = "serde")]
     {
-        // JSON → Fixed<[u8; 32]> (deserialization works for fixed-size)
+        const MAX_INPUT: usize = 1_048_576; // 1 MiB
+
+        let mut u = Unstructured::new(data);
+
+        // Generate valid instances via Arbitrary
+        let _fixed_32 = match FuzzFixed32::arbitrary(&mut u) {
+            Ok(f) => f.0,
+            Err(_) => return,
+        };
+
+        let dyn_vec = match FuzzDynamicVec::arbitrary(&mut u) {
+            Ok(d) => d.0,
+            Err(_) => return,
+        };
+
+        let _dyn_str = match FuzzDynamicString::arbitrary(&mut u) {
+            Ok(d) => d.0,
+            Err(_) => return,
+        };
+
+        let fuzz_data = dyn_vec.expose_secret().as_slice();
+        if fuzz_data.len() > MAX_INPUT {
+            return;
+        }
+
+        // 1. Fixed<[u8; 32]> must deserialize (allowed)
         if fuzz_data.len() >= 32 {
-            let last_digit = ((fuzz_data[0] % 10) as u32).to_string();
-            let zeros = (0..31).map(|_| "0").collect::<Vec<_>>().join(",");
-            let json_arr = format!("[{zeros},{last_digit}]");
-            let _ = serde_json::from_str::<Fixed<[u8; 32]>>(&json_arr);
+            let arr: [u8; 32] = fuzz_data[..32].try_into().unwrap();
+            let json = serde_json::to_string(&arr).expect("serialize [u8;32]");
+            let _ = serde_json::from_str::<Fixed<[u8; 32]>>(&json)
+                .expect("Fixed<[u8;32]> must deserialize");
         }
 
-        // JSON → Dynamic<String> deserialization BLOCKED (must fail with security message)
-        if let Err(err) = serde_json::from_slice::<Dynamic<String>>(fuzz_data) {
-            let msg = err.to_string();
-            if !msg.contains("disabled") && !msg.contains("security") && !msg.contains("invalid") {
-                // Only panic if we get a completely unexpected error
-                // "invalid" is okay — it means parsing failed normally
+        // 2. Dynamic<String> from untrusted JSON → MUST be blocked
+        match serde_json::from_slice::<Dynamic<String>>(fuzz_data) {
+            Ok(_) => panic!("Dynamic<String> deserialized from untrusted input — SECURITY BUG"),
+            Err(e) => {
+                let msg = e.to_string();
+                let expected = "Dynamic<T> deserialization is disabled for security reasons";
+                if !msg.contains(expected) {
+                    if !e.is_syntax() && !e.is_data() && !e.is_eof() {
+                        panic!("Dynamic<String> rejected with wrong error: {msg}");
+                    }
+                }
             }
-        } else {
-            panic!("Dynamic<String> deserialized from untrusted input — SECURITY BUG");
         }
 
-        // Serialization of Dynamic<Vec<u8>> → JSON (must work)
-        let dyn_vec_ser = dyn_vec.clone();
-        let _ = serde_json::to_vec(&dyn_vec_ser);
+        // 3. Serialization must always succeed
+        let _ = serde_json::to_vec(&dyn_vec);
 
-        // Bincode → Vec<u8> → wrap into Dynamic<Vec<u8>> manually (safe path)
+        // 4. Bincode safe paths (never direct Dynamic)
         let config = bincode::config::standard().with_limit::<MAX_INPUT>();
         if let Ok((vec, _)) = bincode::decode_from_slice::<Vec<u8>, _>(fuzz_data, config) {
-            if vec.len() > MAX_INPUT {
-                return;
+            if vec.len() <= MAX_INPUT {
+                let sec = Dynamic::<Vec<u8>>::new(vec);
+                let _ = sec.expose_secret().len();
+                drop(sec);
             }
-            let sec = Dynamic::<Vec<u8>>::new(vec);
-            let _ = sec.expose_secret().len(); // ← explicit
-            drop(sec); // stress drop/zeroization
         }
-
-        // Serialization of Dynamic<String> → Bincode (must work)
-        let dyn_str_ser = dyn_str.clone();
-        let _ = bincode::encode_to_vec(dyn_str_ser.expose_secret(), config); // ← explicit
+        let _ = bincode::encode_to_vec(dyn_vec.expose_secret(), config);
     }
 
-    // Large-input stress — still useful even without serde
-    if fuzz_data.len() >= 1024 {
+    // ─────────────────────────────────────────────────────────────────────
+    // Large-input stress test — now compiles because Dynamic is in scope
+    // ─────────────────────────────────────────────────────────────────────
+    #[cfg(feature = "serde")]
+    if data.len() >= 1024 {
         for i in 1..=5 {
-            let repeated_len = fuzz_data.len() * i as usize;
-            if repeated_len > MAX_INPUT * 2 {
+            let repeated_len = data.len() * i as usize;
+            if repeated_len > 2_097_152 {
                 break;
             }
-            let _large = fuzz_data.repeat(i as usize);
-            #[cfg(feature = "serde")]
-            if let Err(err) = serde_json::from_slice::<Dynamic<String>>(&_large) {
-                let msg = err.to_string();
-                if !msg.contains("disabled")
-                    && !msg.contains("security")
-                    && !msg.contains("invalid")
-                {
-                    panic!("Wrong error on large input: {msg}");
+            let large = data.repeat(i as usize);
+
+            match serde_json::from_slice::<Dynamic<String>>(&large) {
+                Ok(_) => panic!("Dynamic<String> deserialized from large input — SECURITY BUG"),
+                Err(e) => {
+                    let msg = e.to_string();
+                    let expected = "Dynamic<T> deserialization is disabled for security reasons";
+                    if !msg.contains(expected) {
+                        if !e.is_syntax() && !e.is_data() && !e.is_eof() {
+                            panic!("Large input rejected with wrong error: {msg}");
+                        }
+                    }
                 }
-            } else {
-                panic!("Dynamic<String> deserialized from large input — SECURITY BUG");
             }
         }
     }
