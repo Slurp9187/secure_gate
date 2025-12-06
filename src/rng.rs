@@ -4,28 +4,35 @@
 
 use crate::{Dynamic, Fixed};
 use rand::rngs::OsRng;
-use rand::TryRngCore; // ← only need this for try_ methods
+use rand::TryRngCore; // ← modern, correct trait (rand 0.9+)
 use std::cell::RefCell;
 
+// Thread-local OsRng — lazy, safe, and zero-cost
 thread_local! {
     static OS_RNG: RefCell<OsRng> = const { RefCell::new(OsRng) };
 }
 
+/// Fixed-size cryptographically secure random value.
+///
+/// Can only be constructed via `.generate()` — guarantees freshness.
 pub struct FixedRng<const N: usize>(Fixed<[u8; N]>);
 
 impl<const N: usize> FixedRng<N> {
+    /// Generate a fresh random value using the OS RNG.
+    ///
+    /// Panics on RNG failure (catastrophic — appropriate for high-assurance code).
     #[inline(always)]
     pub fn generate() -> Self {
         let mut bytes = [0u8; N];
         OS_RNG.with(|cell| {
             let mut rng = cell.borrow_mut();
-            (*rng)
-                .try_fill_bytes(&mut bytes)
+            rng.try_fill_bytes(&mut bytes)
                 .expect("OsRng failed — this should never happen on supported platforms");
         });
         Self(Fixed::new(bytes))
     }
 
+    /// Expose the secret bytes (read-only).
     #[inline(always)]
     pub fn expose_secret(&self) -> &[u8; N] {
         self.0.expose_secret()
@@ -48,29 +55,36 @@ impl<const N: usize> core::fmt::Debug for FixedRng<N> {
     }
 }
 
+/// Heap-allocated cryptographically secure random bytes.
 pub struct DynamicRng(Dynamic<Vec<u8>>);
 
 impl DynamicRng {
+    /// Generate a fresh random byte vector of the given length.
     #[inline(always)]
     pub fn generate(len: usize) -> Self {
         let mut bytes = vec![0u8; len];
         OS_RNG.with(|cell| {
             let mut rng = cell.borrow_mut();
-            (*rng)
-                .try_fill_bytes(&mut bytes)
+            rng.try_fill_bytes(&mut bytes)
                 .expect("OsRng failed — this should never happen on supported platforms");
         });
         Self(Dynamic::from(bytes))
     }
 
+    /// Generate a random alphanumeric string (base62) of exact length.
+    ///
+    /// Uses unbiased rejection sampling — cryptographically sound.
     #[inline]
     pub fn generate_string(len: usize) -> Dynamic<String> {
         let mut s = String::with_capacity(len);
         OS_RNG.with(|cell| {
             let mut rng = cell.borrow_mut();
             for _ in 0..len {
+                // Unbiased base62 sampling
                 let byte = loop {
-                    let val = rng.try_next_u32().expect("OsRng failed");
+                    let val = rng
+                        .try_next_u32()
+                        .expect("OsRng failed — this should never happen on supported platforms");
                     let candidate = val % 62;
                     if val < (u32::MAX / 62) * 62 {
                         break candidate as u8;
