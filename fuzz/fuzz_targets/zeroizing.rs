@@ -1,24 +1,22 @@
 // fuzz/fuzz_targets/zeroizing.rs
 //
-// Fuzz target for all zeroizing paths — FixedZeroizing, DynamicZeroizing, and drops
+// Fuzz target for all zeroizing paths — FixedNoClone, DynamicNoClone, and drops
 // (v0.5.0 – use re-exports only)
 #![no_main]
-use arbitrary::Arbitrary;
+use arbitrary::{Arbitrary, Unstructured};
 use libfuzzer_sys::fuzz_target;
-
 use secrecy::ExposeSecret;
 use secure_gate_fuzz::arbitrary::{
     FuzzDynamicString, FuzzDynamicVec, FuzzDynamicZeroizingString, FuzzDynamicZeroizingVec,
     FuzzFixed32, FuzzFixedZeroizing32,
 }; // Private to fuzz — OK
 
+#[cfg(feature = "zeroize")]
 fuzz_target!(|data: &[u8]| {
     if data.is_empty() {
         return;
     }
-
-    let mut u = arbitrary::Unstructured::new(data);
-
+    let mut u = Unstructured::new(data);
     let _fixed_32 = match FuzzFixed32::arbitrary(&mut u) {
         Ok(f) => f.0,
         Err(_) => return,
@@ -43,16 +41,16 @@ fuzz_target!(|data: &[u8]| {
         Ok(d) => d.0,
         Err(_) => return,
     };
-
-    // ---------- FixedZeroizing ----------
+    // ---------- FixedNoClone ----------
     let _ = &*fixed_zero_32;
     drop(fixed_zero_32);
-
-    // ---------- DynamicZeroizing<Vec<u8>> ----------
+    // ---------- DynamicNoClone<Vec<u8>> ----------
     let _ = dyn_zero_vec.expose_secret().len();
     drop(dyn_zero_vec);
-
-    // ---------- DynamicZeroizing<String> ----------
+    // ---------- DynamicNoClone<String> ----------
     let _ = dyn_zero_str.expose_secret().len();
     drop(dyn_zero_str);
 });
+
+#[cfg(not(feature = "zeroize"))]
+fuzz_target!(|_: &[u8]| {}); // Empty stub when zeroize disabled
