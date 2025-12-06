@@ -2,19 +2,12 @@
 // src/no_clone.rs
 // ==========================================================================
 
-// Non-cloneable secret wrappers – maximum protection against duplication and leakage.
-
 extern crate alloc;
 use alloc::boxed::Box;
 use core::fmt;
 
-/// Stack-based secret that cannot be cloned.
-///
-/// This is the strongest protection level: no `Clone`, no `Copy`, no `Deref`.
-/// Access is only via explicit `.expose_secret()` methods.
 pub struct FixedNoClone<T>(T);
 
-/// Heap-based secret that cannot be cloned.
 pub struct DynamicNoClone<T: ?Sized>(Box<T>);
 
 impl<T> FixedNoClone<T> {
@@ -23,7 +16,6 @@ impl<T> FixedNoClone<T> {
         FixedNoClone(value)
     }
 
-    /// Explicit read access to the secret.
     #[inline(always)]
     pub fn expose_secret(&self) -> &T {
         &self.0
@@ -62,12 +54,6 @@ impl<T: ?Sized> DynamicNoClone<T> {
     }
 }
 
-// === NO DEREF — INTENTIONAL AND CRITICAL ===
-// No `Deref`/`DerefMut` → prevents:
-//   secret.to_hex()      → compile error (safe!)
-//   hex::encode(&secret) → compile error (safe!)
-//   secret.ct_eq(...)    → compile error (safe!)
-
 impl<T> fmt::Debug for FixedNoClone<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("[REDACTED_NO_CLONE]")
@@ -80,7 +66,6 @@ impl<T: ?Sized> fmt::Debug for DynamicNoClone<T> {
     }
 }
 
-// === Safe convenience helpers ===
 impl DynamicNoClone<String> {
     pub fn finish_mut(&mut self) -> &mut String {
         let s = &mut *self.0;
@@ -96,13 +81,11 @@ impl DynamicNoClone<Vec<u8>> {
         v
     }
 
-    /// Safe read-only slice access — common pattern
     pub fn as_slice(&self) -> &[u8] {
         self.expose_secret()
     }
 }
 
-// === Zeroize integration ===
 #[cfg(feature = "zeroize")]
 use zeroize::{Zeroize, ZeroizeOnDrop};
 

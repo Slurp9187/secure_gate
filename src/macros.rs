@@ -2,8 +2,6 @@
 // src/macros.rs
 // ==========================================================================
 
-
-
 #[macro_export]
 macro_rules! fixed_alias {
     ($name:ident, $size:literal) => {
@@ -54,4 +52,3 @@ macro_rules! dynamic_generic_alias {
         );
     };
 }
-
