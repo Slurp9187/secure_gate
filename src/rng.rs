@@ -1,10 +1,4 @@
-// src/rng.rs
-//! Cryptographically secure random generation — unified RNG-only types (0.6.0)
-//!
-//! - `FixedRng<N>` → fixed-size, only via `.rng()`
-//! - `DynamicRng` → dynamic-size, only via `.rng(len)` (specialized for Vec<u8>)
-//!
-//! Freshness is compiler-enforced: no way to construct from existing data.
+// src/rng.rs — FINAL, CLEAN, CLIPPY-FREE
 
 use crate::{Dynamic, Fixed};
 use rand::rngs::OsRng;
@@ -15,23 +9,21 @@ thread_local! {
     static OS_RNG: RefCell<OsRng> = const { RefCell::new(OsRng) };
 }
 
-/// Fixed-size random-only secret (e.g. `fixed_alias_rng!(Aes256Key, 32)`)
+/// Fixed-size random-only secret
 pub struct FixedRng<const N: usize>(Fixed<[u8; N]>);
 
 impl<const N: usize> FixedRng<N> {
-    /// Generate cryptographically secure random bytes.
-    ///
-    /// This is the **only** way to construct this type.
     #[inline(always)]
     pub fn rng() -> Self {
         let mut bytes = [0u8; N];
         OS_RNG.with(|rng| {
-            let _ = (*rng.borrow_mut()).try_fill_bytes(&mut bytes);
+            rng.borrow_mut()
+                .try_fill_bytes(&mut bytes)
+                .expect("OsRng failed — this should never happen");
         });
         Self(Fixed(bytes))
     }
 
-    /// Expose the secret bytes.
     #[inline(always)]
     pub fn expose_secret(&self) -> &[u8; N] {
         &self.0 .0
@@ -59,26 +51,38 @@ impl<const N: usize> core::fmt::Debug for FixedRng<N> {
     }
 }
 
-/// Dynamic-size random-only secret (specialized for Vec<u8>)
+/// Dynamic-size random-only secret — Vec<u8> only
 pub struct DynamicRng(Dynamic<Vec<u8>>);
 
 impl DynamicRng {
-    /// Generate exactly `len` cryptographically secure random bytes.
-    ///
-    /// This is the **only** way to construct this type.
     #[inline(always)]
     pub fn rng(len: usize) -> Self {
         let mut bytes = vec![0u8; len];
         OS_RNG.with(|rng| {
-            let _ = (*rng.borrow_mut()).try_fill_bytes(&mut bytes);
+            rng.borrow_mut()
+                .try_fill_bytes(&mut bytes)
+                .expect("OsRng failed — this should never happen");
         });
-        Self(Dynamic(Box::new(bytes)))
+        Self(Dynamic::new(bytes))
     }
 
-    /// Expose the secret bytes as a slice.
     #[inline(always)]
     pub fn expose_secret(&self) -> &[u8] {
         &self.0 .0
+    }
+
+    /// Returns the length of the secret in bytes.
+    #[inline(always)]
+    pub fn len(&self) -> usize {
+        self.0 .0.len()
+    }
+
+    /// Returns `true` if the secret has zero length.
+    ///
+    /// This is useful for consistency with `Vec<u8>` and other containers.
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.0 .0.is_empty()
     }
 }
 

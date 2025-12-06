@@ -63,6 +63,6 @@ macro_rules! dynamic_generic_alias {
 macro_rules! dynamic_alias_rng {
     ($name:ident, $inner:ty) => {
         #[doc = concat!("Random-only heap secret (", stringify!($inner), ")")]
-        pub type $name = $crate::rng::DynamicRng<$inner>;
+        pub type $name = $crate::rng::DynamicRng;
     };
 }
