@@ -98,3 +98,28 @@ fn random_hex_via_alias() {
     let bytes = hex.to_bytes();
     assert_eq!(bytes.len(), 32);
 }
+
+#[cfg(feature = "conversions")]
+#[test]
+fn hexstring_new_rejects_invalid() {
+    use secure_gate::HexString;
+
+    let s = "invalid hex".to_string(); // odd length
+    let err = HexString::new(s).unwrap_err();
+    assert_eq!(err, "invalid hex string");
+
+    let s = "g".to_string(); // invalid digit
+    let err = HexString::new(s).unwrap_err();
+    assert_eq!(err, "invalid hex string");
+}
+
+#[cfg(feature = "conversions")]
+#[test]
+fn hexstring_new_in_place_lowercase() {
+    use secure_gate::HexString;
+
+    let s = "DEADBEEF".to_string();
+    let hex = HexString::new(s).unwrap();
+    assert_eq!(hex.expose_secret(), "deadbeef");
+    assert_eq!(hex.byte_len(), 4);
+}

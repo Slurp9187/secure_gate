@@ -3,7 +3,7 @@
 // ==========================================================================
 // Core integration tests — pure v0.6.0 API
 
-use secure_gate::{Dynamic, Fixed};
+use secure_gate::{Dynamic, DynamicNoClone, Fixed};
 
 #[test]
 fn basic_usage_explicit_access() {
@@ -73,4 +73,44 @@ fn explicit_access_for_byte_arrays() {
     let mut_slice: &mut [u8] = key.expose_secret_mut();
     mut_slice[0] = 99;
     assert_eq!(key.expose_secret()[0], 99);
+}
+
+#[test]
+fn dynamic_len_is_empty() {
+    let pw: Dynamic<String> = "hunter2".into();
+    assert_eq!(pw.len(), 7);
+    assert!(!pw.is_empty());
+
+    let empty: Dynamic<String> = "".into();
+    assert_eq!(empty.len(), 0);
+    assert!(empty.is_empty());
+}
+
+#[test]
+fn dynamic_no_clone_len_is_empty() {
+    let pw: DynamicNoClone<String> = DynamicNoClone::new(Box::new("hunter2".to_string()));
+    assert_eq!(pw.len(), 7);
+    assert!(!pw.is_empty());
+
+    let empty: DynamicNoClone<String> = DynamicNoClone::new(Box::new("".to_string()));
+    assert_eq!(empty.len(), 0);
+    assert!(empty.is_empty());
+}
+
+#[cfg(feature = "rand")]
+#[test]
+fn rng_len_is_empty() {
+    use secure_gate::{DynamicRng, FixedRng};
+
+    let rng: FixedRng<32> = FixedRng::generate();
+    assert_eq!(rng.len(), 32);
+    assert!(!rng.is_empty());
+
+    let dyn_rng: DynamicRng = DynamicRng::generate(64);
+    assert_eq!(dyn_rng.len(), 64);
+    assert!(!dyn_rng.is_empty());
+
+    let empty: DynamicRng = DynamicRng::generate(0);
+    assert_eq!(empty.len(), 0);
+    assert!(empty.is_empty());
 }
