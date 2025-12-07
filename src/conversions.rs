@@ -7,7 +7,11 @@ use alloc::string::String;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 #[cfg(feature = "conversions")]
 use base64::Engine;
+#[cfg(feature = "conversions")]
+use zeroize::Zeroize;
 
+/// Extension trait for safe, explicit conversions of secret byte data.
+/// All methods require the caller to explicitly expose the secret first.
 #[cfg(feature = "conversions")]
 pub trait SecureConversionsExt {
     fn to_hex(&self) -> String;
@@ -22,14 +26,17 @@ impl SecureConversionsExt for [u8] {
     fn to_hex(&self) -> String {
         hex::encode(self)
     }
+
     #[inline]
     fn to_hex_upper(&self) -> String {
         hex::encode_upper(self)
     }
+
     #[inline]
     fn to_base64url(&self) -> String {
         URL_SAFE_NO_PAD.encode(self)
     }
+
     #[inline]
     fn ct_eq(&self, other: &Self) -> bool {
         subtle::ConstantTimeEq::ct_eq(self, other).into()
@@ -42,14 +49,17 @@ impl<const N: usize> SecureConversionsExt for [u8; N] {
     fn to_hex(&self) -> String {
         hex::encode(self)
     }
+
     #[inline]
     fn to_hex_upper(&self) -> String {
         hex::encode_upper(self)
     }
+
     #[inline]
     fn to_base64url(&self) -> String {
         URL_SAFE_NO_PAD.encode(self)
     }
+
     #[inline]
     fn ct_eq(&self, other: &Self) -> bool {
         subtle::ConstantTimeEq::ct_eq(self.as_slice(), other.as_slice()).into()
@@ -60,17 +70,39 @@ impl<const N: usize> SecureConversionsExt for [u8; N] {
 // HexString — validated, lowercase hex wrapper
 // ─────────────────────────────────────────────────────────────────────────────
 #[cfg(feature = "conversions")]
-#[derive(Clone, Debug)] // REMOVED PartialEq/Eq derive
+#[derive(Clone, Debug)]
 pub struct HexString(crate::Dynamic<String>);
 
 #[cfg(feature = "conversions")]
 impl HexString {
-    pub fn new(s: String) -> Result<Self, &'static str> {
-        let lower = s.to_ascii_lowercase();
-        if lower.len() % 2 != 0 || !lower.chars().all(|c| c.is_ascii_hexdigit()) {
-            Err("invalid hex string")
+    /// Creates a validated, lowercase hex string with **zero extra heap allocations**.
+    ///
+    /// Takes ownership of the input `String`. If validation fails, the input is
+    /// zeroized immediately before returning the error (when the `zeroize` feature is enabled).
+    pub fn new(mut s: String) -> Result<Self, &'static str> {
+        // Fast early check – hex strings must have even length
+        if s.len() % 2 != 0 {
+            zeroize_input(&mut s);
+            return Err("invalid hex string");
+        }
+
+        // Work directly on the underlying bytes – no copies
+        let bytes = unsafe { s.as_mut_vec() };
+        let mut valid = true;
+
+        for b in bytes.iter_mut() {
+            match *b {
+                b'A'..=b'F' => *b += 32, // 'A' → 'a'
+                b'a'..=b'f' | b'0'..=b'9' => {}
+                _ => valid = false,
+            }
+        }
+
+        if valid {
+            Ok(Self(crate::Dynamic::new(s)))
         } else {
-            Ok(Self(crate::Dynamic::new(lower)))
+            zeroize_input(&mut s);
+            Err("invalid hex string")
         }
     }
 
@@ -80,6 +112,18 @@ impl HexString {
 
     pub fn byte_len(&self) -> usize {
         self.0.expose_secret().len() / 2
+    }
+}
+
+// Private helper – wipes rejected input when `zeroize` is enabled
+#[cfg(feature = "conversions")]
+#[inline(always)]
+fn zeroize_input(s: &mut String) {
+    #[cfg(feature = "zeroize")]
+    {
+        // SAFETY: String's internal buffer is valid for writes of its current length
+        let vec = unsafe { s.as_mut_vec() };
+        vec.zeroize();
     }
 }
 
@@ -98,7 +142,7 @@ impl secrecy::ExposeSecret<String> for HexString {
     }
 }
 
-// Manual constant-time PartialEq (safe, since we're under conversions)
+// Manual constant-time equality
 #[cfg(feature = "conversions")]
 impl PartialEq for HexString {
     fn eq(&self, other: &Self) -> bool {
@@ -116,7 +160,7 @@ impl Eq for HexString {}
 // RandomHex — only constructible from fresh RNG
 // ─────────────────────────────────────────────────────────────────────────────
 #[cfg(all(feature = "rand", feature = "conversions"))]
-#[derive(Clone, Debug)] // REMOVED PartialEq/Eq derive
+#[derive(Clone, Debug)]
 pub struct RandomHex(HexString);
 
 #[cfg(all(feature = "rand", feature = "conversions"))]
@@ -128,6 +172,7 @@ impl RandomHex {
     pub fn to_bytes(&self) -> Vec<u8> {
         self.0.to_bytes()
     }
+
     pub fn byte_len(&self) -> usize {
         self.0.byte_len()
     }
@@ -148,11 +193,10 @@ impl secrecy::ExposeSecret<String> for RandomHex {
     }
 }
 
-// Manual constant-time PartialEq (safe)
 #[cfg(all(feature = "rand", feature = "conversions"))]
 impl PartialEq for RandomHex {
     fn eq(&self, other: &Self) -> bool {
-        self.0.eq(&other.0) // Delegates to HexString's ct_eq impl
+        self.0.eq(&other.0)
     }
 }
 
@@ -162,11 +206,10 @@ impl Eq for RandomHex {}
 #[cfg(all(feature = "rand", feature = "conversions"))]
 impl<const N: usize> crate::rng::FixedRng<N> {
     pub fn random_hex() -> RandomHex {
-        // Scoped block to limit the lifetime of the temporary FixedRng<N>
         let hex = {
-            let fresh_rng = Self::generate(); // temporary owns the secret
-            hex::encode(fresh_rng.expose_secret()) // borrow only for encoding
-        }; // ← fresh_rng dropped here → zeroized immediately (if zeroize enabled)
+            let fresh_rng = Self::generate();
+            hex::encode(fresh_rng.expose_secret())
+        }; // fresh_rng dropped and zeroized here
 
         RandomHex::new_fresh(HexString(crate::Dynamic::new(hex)))
     }
