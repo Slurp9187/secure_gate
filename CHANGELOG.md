@@ -5,6 +5,42 @@ All changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),  
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+That's a good start, but here's a more polished version that follows conventional changelog format and clarifies the change:
+
+## [0.6.1] - 2025-12-07
+
+### Changed
+- **Macro visibility syntax**: All type alias macros (`fixed_alias!`, `fixed_alias_rng!`, `dynamic_alias!`, etc.) now require explicit visibility specification in line with standard Rust semantics. The automatic `pub` fallback has been removed.
+
+### Before
+```rust
+fixed_alias!(MyKey, 32);  // Automatically public (implicit behavior)
+```
+
+### After  
+```rust
+fixed_alias!(pub MyKey, 32);          // Public type (explicit)
+fixed_alias!(MyPrivateKey, 32);       // Private type (no visibility modifier)
+fixed_alias!(pub(crate) Internal, 64); // Crate-visible type
+```
+
+### Why
+- Improves consistency with Rust's explicit visibility philosophy
+- Eliminates surprising automatic behavior in macros  
+- Makes type visibility intentions clear and auditable
+- Removes redundant macro branches, simplifying implementation
+
+### Migration
+Update macro invocations to explicitly specify visibility where needed. Add `pub` for types that should be publicly accessible.
+
+This version is clearer about:
+1. What changed (specific macros affected)
+2. Why it changed (design philosophy)  
+3. Migration path (what users need to do)
+4. Before/after examples for clarity
+
+The tone is professional and the information is complete without being overly technical.
+
 ## [0.6.0] - 2025-12-06
 
 ### Breaking Changes
