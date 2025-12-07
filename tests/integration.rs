@@ -1,7 +1,7 @@
 // ==========================================================================
 // tests/integration.rs
 // ==========================================================================
-// Core integration tests — no macro usage here, pure v0.6.0 API
+// Core integration tests — pure v0.6.0 API
 
 use secure_gate::{Dynamic, Fixed};
 
@@ -10,7 +10,6 @@ fn basic_usage_explicit_access() {
     let mut key = Fixed::new([0u8; 32]);
     let mut pw = Dynamic::<String>::new("hunter2".to_string());
 
-    // Fixed<[u8; N]> now has .len() and .is_empty()
     assert_eq!(key.len(), 32);
     assert!(!key.is_empty());
     assert_eq!(pw.expose_secret().len(), 7);
@@ -20,7 +19,7 @@ fn basic_usage_explicit_access() {
     key.expose_secret_mut()[0] = 1;
 
     assert_eq!(pw.expose_secret(), "hunter2!");
-    assert_eq!(key.expose_secret()[0], 1);
+    assert_eq!(key.expose_secret()[0], 1); // ← fixed: proper assert_eq!
 }
 
 #[test]
@@ -63,64 +62,14 @@ fn into_inner_extracts() {
     assert_eq!(&*boxed, "secret");
 }
 
-#[cfg(feature = "serde")]
-#[test]
-fn serde_fixed_serialize_is_blocked() {
-    let key = Fixed::new([0u8; 32]);
-    let err = serde_json::to_string(&key).expect_err("should not serialize");
-    assert!(err
-        .to_string()
-        .contains("serialization of Fixed<T> is intentionally disabled"));
-}
-
-#[cfg(feature = "serde")]
-#[test]
-fn serde_dynamic_serialize_is_blocked() {
-    let pw = Dynamic::<String>::new("hunter2".to_string());
-
-    let err = serde_json::to_string(&pw).expect_err("Dynamic<T> must refuse serialization");
-
-    let msg = err.to_string();
-    assert!(
-        msg.contains("serialization of Dynamic<T> is intentionally disabled"),
-        "Error message should explain the security block. Got: {msg}"
-    );
-}
-
-#[cfg(feature = "serde")]
-#[test]
-fn dynamic_deserialize_is_blocked_with_clear_error() {
-    use serde::Deserialize;
-
-    #[derive(Deserialize, Debug)]
-    struct Wrapper {
-        #[allow(dead_code)]
-        secret: Dynamic<String>,
-    }
-
-    let json = r#"{"secret": "hunter2"}"#;
-
-    let err = serde_json::from_str::<Wrapper>(json).expect_err("Deserialization should fail");
-
-    let msg = err.to_string();
-    assert!(
-        msg.contains("Deserialization of Dynamic<T> is intentionally disabled")
-            || msg.contains("Dynamic<T> is intentionally disabled"),
-        "Error message should explain security rationale. Got: {msg}"
-    );
-}
-
-// REPLACED: fixed_as_ref_as_mut → explicit_access_for_byte_arrays
 #[test]
 fn explicit_access_for_byte_arrays() {
     let mut key = Fixed::new([42u8; 32]);
 
-    // Immutable borrow – must be explicit
     let slice: &[u8] = key.expose_secret();
     assert_eq!(slice.len(), 32);
     assert_eq!(slice[0], 42);
 
-    // Mutable borrow – must be explicit
     let mut_slice: &mut [u8] = key.expose_secret_mut();
     mut_slice[0] = 99;
     assert_eq!(key.expose_secret()[0], 99);

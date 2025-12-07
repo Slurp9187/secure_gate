@@ -28,9 +28,6 @@ pub mod rng;
 #[cfg(feature = "conversions")]
 pub mod conversions;
 
-#[cfg(feature = "serde")]
-mod serde;
-
 // ── Feature-gated re-exports (only exist when feature is enabled) ────
 #[cfg(feature = "rand")]
 pub use rng::{DynamicRng, FixedRng};

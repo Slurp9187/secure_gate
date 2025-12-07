@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [clone, expose, mut, parsing, serde] # ← zeroizing removed
+        target: [clone, expose, mut, parsing] # ← zeroizing removed
 
     steps:
       - name: Checkout repository
