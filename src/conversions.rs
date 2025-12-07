@@ -1,180 +1,178 @@
+// ==========================================================================
 // src/conversions.rs
-//! Ergonomic conversions for fixed-size secrets — **explicit exposure required**
-//!
-//! This module provides the [`SecureConversionsExt`] trait containing `.to_hex()`,
-//! `.to_hex_upper()`, `.to_base64url()`, and `.ct_eq()`.
-//!
-//! The trait is implemented **only on `&[u8]`**, meaning you **must** call
-//! `.expose_secret()` first. This guarantees every conversion site is loud,
-//! intentional, and visible in code reviews.
-//!
-//! Enabled via the `conversions` feature (zero impact when disabled).
-//!
-//! # Correct usage (v0.5.9+)
-//!
-//! ```
-//! use secure_gate::{fixed_alias, SecureConversionsExt};
-//!
-//! fixed_alias!(Aes256Key, 32);
-//!
-//! let key1 = Aes256Key::from([0x42; 32]);
-//! let key2 = Aes256Key::from([0x42; 32]);
-//!
-//! let hex = key1.expose_secret().to_hex();
-//! let b64 = key1.expose_secret().to_base64url();
-//! assert!(key1.expose_secret().ct_eq(key2.expose_secret()));
-//! ```
+// ==========================================================================
+
+#![cfg_attr(not(feature = "zeroize"), forbid(unsafe_code))]
 
 #[cfg(feature = "conversions")]
 use alloc::string::String;
-
 #[cfg(feature = "conversions")]
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 #[cfg(feature = "conversions")]
 use base64::Engine;
+#[cfg(feature = "conversions")]
+use zeroize::Zeroize;
 
-#[cfg(all(feature = "rand", feature = "conversions"))]
-use secrecy::ExposeSecret;
-
-// Loud deprecation bomb — impossible to miss if someone uses the old API
-#[cfg(all(feature = "conversions", not(doc)))]
-#[deprecated(
-    since = "0.5.9",
-    note = "DIRECT CONVERSIONS BYPASS expose_secret() — USE .expose_secret().to_hex() ETC."
-)]
-#[doc(hidden)]
-const _DIRECT_CONVERSIONS_ARE_EVIL: () = ();
-
-/// Extension trait for common secure conversions.
+/// Extension trait for safe, explicit conversions of secret byte data.
 ///
-/// # Security
+/// All methods require the caller to first call `.expose_secret()` (or `.expose_secret_mut()`).
+/// This makes every secret access loud, grep-able, and auditable.
 ///
-/// This trait is **intentionally** only implemented for `&[u8]`.
-/// There is **no** impl for `Fixed<T>` — this guarantees every conversion
-/// requires an explicit `.expose_secret()` call.
+/// # Example
+///
+/// ```
+/// # use secure_gate::{fixed_alias, SecureConversionsExt};
+/// fixed_alias!(Aes256Key, 32);
+/// let key = Aes256Key::from([0x42u8; 32]);
+/// let hex = key.expose_secret().to_hex();         // → "424242..."
+/// let b64 = key.expose_secret().to_base64url();   // URL-safe, no padding
+/// # assert_eq!(hex, "4242424242424242424242424242424242424242424242424242424242424242");
+/// ```
+#[cfg(feature = "conversions")]
 pub trait SecureConversionsExt {
+    /// Encode secret bytes as lowercase hexadecimal.
     fn to_hex(&self) -> String;
+
+    /// Encode secret bytes as uppercase hexadecimal.
     fn to_hex_upper(&self) -> String;
+
+    /// Encode secret bytes as URL-safe base64 (no padding).
     fn to_base64url(&self) -> String;
+
+    /// Constant-time equality comparison.
+    ///
+    /// Returns `true` if the two secrets are equal, `false` otherwise.
+    /// Uses `subtle::ConstantTimeEq` under the hood – safe against timing attacks.
     fn ct_eq(&self, other: &Self) -> bool;
 }
 
-/// Core implementation — only on already-exposed bytes
 #[cfg(feature = "conversions")]
 impl SecureConversionsExt for [u8] {
-    #[inline]
+    #[inline(always)]
     fn to_hex(&self) -> String {
         hex::encode(self)
     }
 
-    #[inline]
+    #[inline(always)]
     fn to_hex_upper(&self) -> String {
         hex::encode_upper(self)
     }
 
-    #[inline]
+    #[inline(always)]
     fn to_base64url(&self) -> String {
         URL_SAFE_NO_PAD.encode(self)
     }
 
-    #[inline]
-    fn ct_eq(&self, other: &[u8]) -> bool {
+    #[inline(always)]
+    fn ct_eq(&self, other: &Self) -> bool {
         subtle::ConstantTimeEq::ct_eq(self, other).into()
     }
 }
 
-/// Backward-compatibility shims — **deprecated**
-///
-/// Will be removed in v0.6.0.
 #[cfg(feature = "conversions")]
-impl<const N: usize> crate::Fixed<[u8; N]> {
-    #[deprecated(
-        since = "0.5.9",
-        note = "use `expose_secret().to_hex()` instead — makes secret exposure explicit"
-    )]
-    #[doc(hidden)]
+impl<const N: usize> SecureConversionsExt for [u8; N] {
     #[inline(always)]
-    pub fn to_hex(&self) -> String {
-        self.expose_secret().to_hex()
+    fn to_hex(&self) -> String {
+        hex::encode(self)
     }
 
-    #[deprecated(since = "0.5.9", note = "use `expose_secret().to_hex_upper()` instead")]
-    #[doc(hidden)]
     #[inline(always)]
-    pub fn to_hex_upper(&self) -> String {
-        self.expose_secret().to_hex_upper()
+    fn to_hex_upper(&self) -> String {
+        hex::encode_upper(self)
     }
 
-    #[deprecated(since = "0.5.9", note = "use `expose_secret().to_base64url()` instead")]
-    #[doc(hidden)]
     #[inline(always)]
-    pub fn to_base64url(&self) -> String {
-        self.expose_secret().to_base64url()
+    fn to_base64url(&self) -> String {
+        URL_SAFE_NO_PAD.encode(self)
     }
 
-    #[deprecated(
-        since = "0.5.9",
-        note = "use `expose_secret().ct_eq(other.expose_secret())` instead"
-    )]
-    #[doc(hidden)]
     #[inline(always)]
-    pub fn ct_eq(&self, other: &Self) -> bool {
-        self.expose_secret().ct_eq(other.expose_secret())
+    fn ct_eq(&self, other: &Self) -> bool {
+        subtle::ConstantTimeEq::ct_eq(self.as_slice(), other.as_slice()).into()
     }
 }
 
-// ───── Compile-time safety net — prevents accidental re-introduction of the bad impl ─────
-//
-// We use a negative impl to trigger a compile error if someone adds an impl of
-// SecureConversionsExt for Fixed<[u8; N]> in the future.
-//
-// This is a well-known Rust pattern (used by crates like `serde`, `thiserror`, etc.)
-// to enforce API invariants at compile time.
+// ─────────────────────────────────────────────────────────────────────────────
+// HexString — validated, lowercase hex wrapper
+// ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(feature = "conversions")]
-trait _AssertNoImplForFixed {}
-#[cfg(feature = "conversions")]
-impl<T> _AssertNoImplForFixed for T where T: SecureConversionsExt {}
-
-#[cfg(feature = "conversions")]
-impl<const N: usize> _AssertNoImplForFixed for crate::Fixed<[u8; N]> {
-    //  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    //  If anyone ever adds `impl SecureConversionsExt for Fixed<[u8; N]>`, this line
-    //  will cause a compile error: "conflicting implementation"
-    //  → immediate, loud failure instead of silent security regression
-}
-
-// ───── New: HexString newtype for type-safe hex handling ─────
-
-/// Newtype for validated hex strings with extensions.
-///
-/// Deref to Dynamic<String> to inherit String methods/properties.
-/// Enforces explicit exposure via expose_secret().
-#[cfg(feature = "conversions")]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct HexString(crate::Dynamic<String>);
 
 #[cfg(feature = "conversions")]
 impl HexString {
-    /// Creates a new HexString if the input is valid hex (even length, 0-9a-fA-F chars).
-    /// Normalizes to lowercase.
-    pub fn new(s: String) -> Result<Self, &'static str> {
-        let lower = s.to_lowercase();
-        if lower.len() % 2 != 0 || !lower.chars().all(|c| c.is_ascii_hexdigit()) {
-            Err("Invalid hex: must be even length with 0-9a-f chars")
+    /// Create a new `HexString` from a `String`, validating it in-place.
+    ///
+    /// The input `String` is consumed. If validation fails and the `zeroize` feature
+    /// is enabled, the rejected bytes are zeroized before the error is returned.
+    ///
+    /// Validation rules:
+    /// - Even length
+    /// - Only ASCII hex digits (`0-9`, `a-f`, `A-F`)
+    /// - Uppercase letters are normalized to lowercase
+    ///
+    /// Zero extra allocations are performed – everything happens on the original buffer.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err("invalid hex string")` if validation fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use secure_gate::conversions::HexString;
+    /// let valid = HexString::new("deadbeef".to_string()).unwrap();
+    /// assert_eq!(valid.expose_secret(), "deadbeef");
+    /// ```
+    pub fn new(mut s: String) -> Result<Self, &'static str> {
+        // Fast early check – hex strings must have even length
+        if s.len() % 2 != 0 {
+            zeroize_input(&mut s);
+            return Err("invalid hex string");
+        }
+
+        // Work directly on the underlying bytes – no copies
+        let bytes = unsafe { s.as_mut_vec() };
+        let mut valid = true;
+        for b in bytes.iter_mut() {
+            match *b {
+                b'A'..=b'F' => *b += 32, // 'A' → 'a'
+                b'a'..=b'f' | b'0'..=b'9' => {}
+                _ => valid = false,
+            }
+        }
+
+        if valid {
+            Ok(Self(crate::Dynamic::new(s)))
         } else {
-            Ok(Self(crate::Dynamic::new(lower)))
+            zeroize_input(&mut s);
+            Err("invalid hex string")
         }
     }
 
-    /// Decodes back to bytes (safe due to validation).
+    /// Decode the validated hex string back into raw bytes.
+    ///
+    /// Panics if the internal string is somehow invalid (impossible under correct usage).
     pub fn to_bytes(&self) -> Vec<u8> {
-        hex::decode(self.expose_secret()).expect("Validated hex")
+        hex::decode(self.0.expose_secret()).expect("HexString is always valid")
     }
 
-    /// Property: Original byte length (half of hex len).
-    pub fn byte_len(&self) -> usize {
-        self.expose_secret().len() / 2
+    /// Number of bytes the decoded hex string represents.
+    pub const fn byte_len(&self) -> usize {
+        self.0.expose_secret().len() / 2
+    }
+}
+
+// Private helper – wipes rejected input when `zeroize` is enabled
+#[cfg(feature = "conversions")]
+#[inline(always)]
+fn zeroize_input(s: &mut String) {
+    #[cfg(feature = "zeroize")]
+    {
+        // SAFETY: String's internal buffer is valid for writes of its current length
+        let vec = unsafe { s.as_mut_vec() };
+        vec.zeroize();
     }
 }
 
@@ -186,34 +184,49 @@ impl core::ops::Deref for HexString {
     }
 }
 
-#[cfg(feature = "conversions")]
-impl ExposeSecret<String> for HexString {
+#[cfg(all(feature = "conversions", feature = "zeroize"))]
+impl secrecy::ExposeSecret<String> for HexString {
     fn expose_secret(&self) -> &String {
         self.0.expose_secret()
     }
 }
 
-/// Newtype for random hex strings — wraps HexString for freshness semantics.
-///
-/// Construction only via RNG → guarantees it's from random bytes.
+// Manual constant-time equality – prevents timing attacks on hex strings
+#[cfg(feature = "conversions")]
+impl PartialEq for HexString {
+    fn eq(&self, other: &Self) -> bool {
+        self.0
+            .expose_secret()
+            .as_bytes()
+            .ct_eq(other.0.expose_secret().as_bytes())
+    }
+}
+
+#[cfg(feature = "conversions")]
+impl Eq for HexString {}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RandomHex — only constructible from fresh RNG
+// ─────────────────────────────────────────────────────────────────────────────
+
 #[cfg(all(feature = "rand", feature = "conversions"))]
-#[derive(Clone, Debug, PartialEq)]
-pub struct RandomHex(pub HexString);
+#[derive(Clone, Debug)]
+pub struct RandomHex(HexString);
 
 #[cfg(all(feature = "rand", feature = "conversions"))]
 impl RandomHex {
-    /// Internal constructor — only from validated hex.
-    pub fn new(hex: HexString) -> Self {
+    /// Internal constructor – only called by `FixedRng<N>::random_hex()`.
+    pub(crate) fn new_fresh(hex: HexString) -> Self {
         Self(hex)
     }
 
-    /// Decodes back to bytes (inherits from HexString).
+    /// Decode the random hex string back into raw bytes.
     pub fn to_bytes(&self) -> Vec<u8> {
         self.0.to_bytes()
     }
 
-    /// Property: Original byte length (inherits).
-    pub fn byte_len(&self) -> usize {
+    /// Number of bytes the decoded hex string represents.
+    pub const fn byte_len(&self) -> usize {
         self.0.byte_len()
     }
 }
@@ -221,33 +234,48 @@ impl RandomHex {
 #[cfg(all(feature = "rand", feature = "conversions"))]
 impl core::ops::Deref for RandomHex {
     type Target = HexString;
-    #[inline(always)]
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-#[cfg(all(feature = "rand", feature = "conversions"))]
-impl ExposeSecret<String> for RandomHex {
-    #[inline(always)]
+#[cfg(all(feature = "rand", feature = "conversions", feature = "zeroize"))]
+impl secrecy::ExposeSecret<String> for RandomHex {
     fn expose_secret(&self) -> &String {
         self.0.expose_secret()
     }
 }
 
 #[cfg(all(feature = "rand", feature = "conversions"))]
-#[test]
-fn random_hex_returns_randomhex() {
-    use crate::{random_alias, SecureRandomExt};
+impl PartialEq for RandomHex {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq(&other.0)
+    }
+}
 
-    random_alias!(HexKey, 32);
+#[cfg(all(feature = "rand", feature = "conversions"))]
+impl Eq for RandomHex {}
 
-    let hex = HexKey::random_hex();
-    let _: RandomHex = hex;
-
-    assert_eq!(hex.expose_secret().len(), 64);
-    assert!(hex.expose_secret().chars().all(|c| c.is_ascii_hexdigit()));
-
-    let bytes_back = hex.to_bytes();
-    assert_eq!(bytes_back.len(), 32);
+#[cfg(all(feature = "rand", feature = "conversions"))]
+impl<const N: usize> crate::rng::FixedRng<N> {
+    /// Generate a fresh random value and immediately return it as a validated,
+    /// lower-case hex string.
+    ///
+    /// The intermediate random bytes are zeroized as soon as the hex string is created.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use secure_gate::{fixed_alias_rng, conversions::RandomHex};
+    /// fixed_alias_rng!(BackupCode, 16);
+    /// let hex: RandomHex = BackupCode::random_hex();
+    /// println!("backup code: {}", hex.expose_secret());
+    /// ```
+    pub fn random_hex() -> RandomHex {
+        let hex = {
+            let fresh_rng = Self::generate();
+            hex::encode(fresh_rng.expose_secret())
+        }; // fresh_rng dropped and zeroized here
+        RandomHex::new_fresh(HexString(crate::Dynamic::new(hex)))
+    }
 }

@@ -1,144 +1,169 @@
+// ==========================================================================
 // src/rng.rs
-//! Cryptographically secure random generation for fixed-size secrets.
-//!
-//! This module provides the [`SecureRandomExt`] trait, which adds a `.new()`
-//! method to all `RandomBytes<N>` types (including those created via [`random_alias!`]).
-//!
-//! The implementation uses a **thread-local** `rand::rngs::OsRng` that is lazily
-//! initialized on first use. It is:
-//! - Zero heap allocation after first use
-//! - Fully `no_std`-compatible
-//! - Panics on RNG failure (standard practice in high-assurance crypto code)
-//!
-//! Requires the `rand` feature.
-//!
-//! # Examples
-//!
-//! ```
-/// use secure_gate::{random_alias, SecureRandomExt};
+// ==========================================================================
+
+use crate::{Dynamic, Fixed};
+use rand::rngs::OsRng;
+use rand::TryRngCore;
+
+/// Fixed-length cryptographically secure random value.
 ///
-/// random_alias!(Aes256Key, 32);
-/// random_alias!(XChaCha20Nonce, 24);
+/// This is a newtype over `Fixed<[u8; N]>` that enforces construction only via secure RNG.
+/// Guarantees freshness — cannot be created from arbitrary bytes.
 ///
-/// let key: Aes256Key = Aes256Key::new();        // cryptographically secure
-/// let nonce: XChaCha20Nonce = XChaCha20Nonce::new();
+/// Requires the "rand" feature.
 ///
-/// assert_eq!(key.len(), 32);
-/// assert_eq!(nonce.len(), 24);
+/// # Examples
+///
+/// Basic usage:
 /// ```
-use rand::{rngs::OsRng, TryRngCore};
-use std::cell::RefCell;
-
-thread_local! {
-    static OS_RNG: RefCell<OsRng> = const { RefCell::new(OsRng) };
-}
-
-/// Extension trait for generating cryptographically secure random values.
+/// # #[cfg(feature = "rand")]
+/// # {
+/// use secure_gate::rng::FixedRng;
+/// let random: FixedRng<32> = FixedRng::generate();
+/// assert_eq!(random.len(), 32);
+/// # }
+/// ```
 ///
-/// Implemented for all `RandomBytes<N>` types (including `random_alias!` types).
-///
-/// # Panics
-///
-/// Panics if the OS RNG fails to fill the buffer. This is exceedingly rare and
-/// considered fatal in cryptographic contexts.
-pub trait SecureRandomExt {
-    /// Generates a new random instance using the operating system's
-    /// cryptographically secure PRNG.
-    fn new() -> Self
-    where
-        Self: Sized;
+/// With alias:
+/// ```
+/// # #[cfg(feature = "rand")]
+/// # {
+/// use secure_gate::fixed_alias_rng;
+/// fixed_alias_rng!(Nonce, 24);
+/// let nonce = Nonce::generate();
+/// # }
+/// ```
+pub struct FixedRng<const N: usize>(Fixed<[u8; N]>);
 
-    /// **Deprecated** — use `new()` instead.
-    #[deprecated(
-        since = "0.6.0",
-        note = "use `new()` instead — idiomatic and avoids self-named constructor"
-    )]
-    fn random_bytes() -> Self
-    where
-        Self: Sized,
-    {
-        Self::new()
+impl<const N: usize> FixedRng<N> {
+    /// Generate fresh random bytes using the OS RNG.
+    ///
+    /// Uses `rand::rngs::OsRng` directly for maximum throughput.
+    /// Panics if the RNG fails (rare, but correct for crypto code).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # #[cfg(feature = "rand")]
+    /// # {
+    /// use secure_gate::rng::FixedRng;
+    /// let random = FixedRng::<16>::generate();
+    /// assert!(!random.is_empty());
+    /// # }
+    /// ```
+    pub fn generate() -> Self {
+        let mut bytes = [0u8; N];
+        OsRng
+            .try_fill_bytes(&mut bytes)
+            .expect("OsRng failed — this should never happen on supported platforms");
+        Self(Fixed::new(bytes))
     }
 
-    /// **Deprecated** — use `new()` instead.
-    #[deprecated(since = "0.6.0", note = "use `new()` instead — clearer and idiomatic")]
-    fn random() -> Self
-    where
-        Self: Sized,
-    {
-        Self::new()
-    }
-
-    /// Generate random bytes and return as RandomHex.
-    #[cfg(all(feature = "rand", feature = "conversions"))]
-    fn random_hex() -> crate::RandomHex
-    where
-        Self: Sized;
-}
-
-/// Fresh cryptographically-secure random bytes of exactly `N` length.
-///
-/// Construction is only possible through the RNG — you cannot build one manually.
-/// This gives compile-time assurance that the value is truly random.
-#[derive(Clone, Copy)]
-pub struct RandomBytes<const N: usize>(crate::Fixed<[u8; N]>);
-
-impl<const N: usize> RandomBytes<N> {
-    /// Explicit access — required by secure-gate’s safety rules.
+    /// Expose the random bytes for read-only access.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # #[cfg(feature = "rand")]
+    /// # {
+    /// use secure_gate::rng::FixedRng;
+    /// let random = FixedRng::<4>::generate();
+    /// let bytes = random.expose_secret();
+    /// # }
+    /// ```
     #[inline(always)]
     pub fn expose_secret(&self) -> &[u8; N] {
         self.0.expose_secret()
     }
 
-    /// Mutable access when you need to overwrite (rare, but useful for some protocols).
+    /// Returns the fixed length in bytes.
     #[inline(always)]
-    pub fn expose_secret_mut(&mut self) -> &mut [u8; N] {
-        self.0.expose_secret_mut()
+    pub const fn len(&self) -> usize {
+        N
+    }
+
+    /// Returns `true` if the length is zero.
+    #[inline(always)]
+    pub const fn is_empty(&self) -> bool {
+        N == 0
     }
 }
 
-// Deref so you keep all the nice Fixed methods (len, as_slice, etc.)
-impl<const N: usize> core::ops::Deref for RandomBytes<N> {
-    type Target = crate::Fixed<[u8; N]>;
-    #[inline(always)]
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-// Optional: Debug redaction
-impl<const N: usize> core::fmt::Debug for RandomBytes<N> {
+impl<const N: usize> core::fmt::Debug for FixedRng<N> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str("[REDACTED_RANDOM]")
+        f.write_str("[REDACTED]")
     }
 }
 
-// Impl the trait on the newtype
-impl<const N: usize> SecureRandomExt for RandomBytes<N> {
-    #[inline(always)]
-    fn new() -> Self
-    where
-        Self: Sized,
-    {
-        let mut bytes = [0u8; N];
-        OS_RNG.with(|rng| {
-            rng.borrow_mut()
-                .try_fill_bytes(&mut bytes)
-                .expect("OsRng failed — this should never happen");
-        });
-        RandomBytes(crate::Fixed::new(bytes))
+/// Heap-allocated cryptographically secure random bytes.
+///
+/// This is a newtype over `Dynamic<Vec<u8>>` for semantic clarity.
+/// Like `FixedRng`, guarantees freshness via RNG construction.
+///
+/// Requires the "rand" feature.
+///
+/// # Examples
+///
+/// ```
+/// # #[cfg(feature = "rand")]
+/// # {
+/// use secure_gate::rng::DynamicRng;
+/// let random = DynamicRng::generate(64);
+/// assert_eq!(random.len(), 64);
+/// # }
+/// ```
+pub struct DynamicRng(Dynamic<Vec<u8>>);
+
+impl DynamicRng {
+    /// Generate fresh random bytes of the specified length.
+    ///
+    /// Panics if the RNG fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # #[cfg(feature = "rand")]
+    /// # {
+    /// use secure_gate::rng::DynamicRng;
+    /// let random = DynamicRng::generate(128);
+    /// # }
+    /// ```
+    pub fn generate(len: usize) -> Self {
+        let mut bytes = vec![0u8; len];
+        OsRng
+            .try_fill_bytes(&mut bytes)
+            .expect("OsRng failed — this should never happen on supported platforms");
+        Self(Dynamic::from(bytes))
     }
 
-    #[cfg(all(feature = "rand", feature = "conversions"))]
+    /// Expose the random bytes for read-only access.
     #[inline(always)]
-    fn random_hex() -> crate::RandomHex
-    where
-        Self: Sized,
-    {
-        use crate::conversions::SecureConversionsExt; // Import for to_hex
-        let secret = Self::new();
-        let hex_str = secret.expose_secret().to_hex();
-        let hex = crate::conversions::HexString::new(hex_str).expect("Generated hex is valid");
-        crate::conversions::RandomHex(hex)
+    pub fn expose_secret(&self) -> &[u8] {
+        self.0.expose_secret()
+    }
+
+    /// Returns the length in bytes.
+    #[inline(always)]
+    pub const fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns `true` if empty.
+    #[inline(always)]
+    pub const fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Consume and return the inner `Dynamic<Vec<u8>>`.
+    #[inline(always)]
+    pub fn into_inner(self) -> Dynamic<Vec<u8>> {
+        self.0
+    }
+}
+
+impl core::fmt::Debug for DynamicRng {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("[REDACTED]")
     }
 }

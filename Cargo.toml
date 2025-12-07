@@ -1,6 +1,6 @@
 [package]
 name = "secure-gate"
-version = "0.5.10"
+version = "0.6.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "Zero-cost secure wrappers for secrets — stack for fixed, heap for dynamic"
@@ -16,7 +16,6 @@ zeroize = { version = "1.8", default-features = false, optional = true, features
   "alloc",
   "zeroize_derive",
 ] }
-serde = { version = "1.0", features = ["derive"], optional = true }
 
 # These three are only ever used by the optional `conversions` feature
 hex = { version = "0.4", optional = true, features = ["alloc"] }
@@ -24,23 +23,27 @@ base64 = { version = "0.22", optional = true }
 subtle = { version = "2.5", optional = true }
 
 [dev-dependencies]
-serde_json = "1.0"
 criterion = { version = "0.5", features = ["html_reports"] }
 
 # ──────────────────────────────────────────────────────────────
 # Features
 # ──────────────────────────────────────────────────────────────
 [features]
+# Keep exactly this — perfect balance
 default = ["zeroize"]
 
-# Core features — unchanged from 0.5.7
+# Core safety — almost everyone wants this
 zeroize = ["dep:zeroize", "dep:secrecy"]
-serde = ["dep:serde"]
+
+# Cryptographic randomness — opt-in
 rand = ["dep:rand"]
 
-# NEW: optional ergonomic conversions
-# Only adds the three deps above + enables `alloc` (already pulled by zeroize)
+# Ergonomic conversions — opt-in, very popular
 conversions = ["dep:hex", "dep:base64", "dep:subtle"]
+
+# Convenience super-set — recommended in docs
+full = ["zeroize", "rand", "conversions"]
+
 
 [[bench]]
 name = "fixed_vs_raw"

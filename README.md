@@ -1,158 +1,143 @@
 # secure-gate
-
-**Zero-cost, `no_std`-compatible wrappers for handling sensitive data in memory — now with true type-safe randomness and hex.**
-
-- `Fixed<T>` – stack-allocated, zero-cost wrapper  
-- `Dynamic<T>` – heap-allocated wrapper with full `.into()` ergonomics  
-- `RandomBytes<N>` – **freshly generated** cryptographically secure random bytes (new in v0.5.10)  
-- `RandomHex` – validated, exposure-protected random hex string (new in v0.5.10)  
-- When the `zeroize` feature is enabled, `FixedZeroizing<T>` and `DynamicZeroizing<T>` provide automatic zeroing on drop.
-
-**Now with `conversions` — safe, explicit, and still the most ergonomic secret conversions in Rust.**
-
+**Zero-cost, `no_std`-compatible wrappers for sensitive data with enforced explicit exposure.**
+- `Fixed<T>` – stack-allocated, zero-cost wrapper
+- `Dynamic<T>` – heap-allocated wrapper with full `.into()` ergonomics
+- `FixedRng<N>` – cryptographically secure random bytes of exact length N
+- `RandomHex` – validated random hex string that can only be constructed from fresh RNG
+When the `zeroize` feature is enabled, secrets are automatically wiped on drop (including spare capacity).
+**All access to secret bytes now requires an explicit `.expose_secret()` call** – no silent leaks, no `Deref`, no hidden methods.
 ## Installation
-
 ```toml
 [dependencies]
-secure-gate = "0.5.10"
+secure-gate = "0.6.0"
 ```
-
 **Recommended (maximum safety + ergonomics):**
-
 ```toml
-secure-gate = { version = "0.5.10", features = ["zeroize", "rand", "conversions"] }
+secure-gate = { version = "0.6.0", features = ["zeroize", "rand", "conversions"] }
 ```
-
 ## Features
-
-| Feature       | Description                                                                                              |
-|---------------|----------------------------------------------------------------------------------------------------------|
-| `zeroize`     | Automatic memory wiping on drop — **strongly recommended**                                               |
-| `rand`        | `RandomBytes<N>::new()` + `random_alias!` — type-safe, cryptographically secure randomness              |
-| `conversions` | `.to_hex()`, `.to_hex_upper()`, `.to_base64url()`, `.ct_eq()` + `HexString` / `RandomHex` newtypes         |
-| `serde`       | Optional serialization (deserialization intentionally disabled on `Dynamic<T>` for security)             |
-
+| Feature | Description |
+|---------------|---------------------------------------------------------------------------------------------|
+| `zeroize` | Automatic memory wiping on drop — **strongly recommended** |
+| `rand` | `FixedRng<N>::generate()` + `fixed_alias_rng!` — type-safe, fresh randomness |
+| `conversions` | `.to_hex()`, `.to_hex_upper()`, `.to_base64url()`, `.ct_eq()` + `HexString` / `RandomHex` |
 Works in `no_std` + `alloc`. Only pay for what you use.
-
-## Quick Start – v0.5.10 Edition
-
+## Quick Start – v0.6.0
 ```rust
-use secure_gate::{fixed_alias, dynamic_alias, random_alias};
+use secure_gate::{fixed_alias, dynamic_alias};
 
 fixed_alias!(Aes256Key, 32);
 dynamic_alias!(Password, String);
 
-// NEW: Type-safe, fresh randomness
 #[cfg(feature = "rand")]
 {
-    random_alias!(MasterKey, 32);
-    random_alias!(FileNonce, 24);
+    use secure_gate::fixed_alias_rng;
 
-    let key    = MasterKey::new();                    // RandomBytes<32> — guaranteed fresh
-    let nonce  = FileNonce::new();                    // RandomBytes<24>
-    let hex_pw = MasterKey::random_hex();             // RandomHex — validated + exposure-safe
+    fixed_alias_rng!(MasterKey, 32);
+    fixed_alias_rng!(Nonce, 24);
+    let key = MasterKey::generate(); // FixedRng<32>
+    let nonce = Nonce::generate(); // FixedRng<24>
+    #[cfg(feature = "conversions")]
+    {
+        use secure_gate::RandomHex;
+
+        let hex_token: RandomHex = MasterKey::random_hex(); // only from fresh RNG
+    }
 }
-
-// Secure conversions — explicit exposure required (v0.5.9+)
-#[cfg(feature = "conversions")]
+#[cfg(all(feature = "rand", feature = "conversions"))]
 {
-    let hex  = key.expose_secret().to_hex();          // loud, safe, intentional
-    let b64  = key.expose_secret().to_base64url();
-    let same = key.expose_secret().ct_eq(other.expose_secret());
+    use secure_gate::fixed_alias_rng;
+    use secure_gate::SecureConversionsExt;
 
-    println!("Key (hex):       {hex}");
+    fixed_alias_rng!(MasterKey, 32);
+
+    let key = MasterKey::generate();
+    let other = MasterKey::generate();
+    let hex = key.expose_secret().to_hex(); // "a1b2c3d4..."
+    let b64 = key.expose_secret().to_base64url(); // URL-safe, no padding
+    let same = key.expose_secret().ct_eq(other.expose_secret()); // constant-time
+    println!("Key (hex): {hex}");
     println!("Key (Base64URL): {b64}");
 }
-
-// Heap secrets — still pure joy
+// Heap secrets — unchanged ergonomics
 let pw: Password = "hunter2".into();
 assert_eq!(pw.expose_secret(), "hunter2");
 ```
-
-## New in v0.5.10 — Type-Safe Randomness
-
+## Type-Safe Randomness (v0.6.0)
 ```rust
 #[cfg(feature = "rand")]
 {
-    random_alias!(JwtSigningKey, 32);
-    random_alias!(BackupCode,    16);
+    use secure_gate::fixed_alias_rng;
 
-    let key   = JwtSigningKey::new();                 // RandomBytes<32>
-    let code  = BackupCode::new();                  // RandomBytes<16>
-
-    // Optional: get validated random hex
+    fixed_alias_rng!(JwtSigningKey, 32);
+    fixed_alias_rng!(BackupCode, 16);
+    let key = JwtSigningKey::generate(); // FixedRng<32>
+    let code = BackupCode::generate(); // FixedRng<16>
     #[cfg(feature = "conversions")]
-    let hex_code: RandomHex = BackupCode::random_hex();
-    println!("Backup code: {}", hex_code.expose_secret()); // "a1b2c3d4..."
+    {
+        use secure_gate::RandomHex;
+
+        let hex_code: RandomHex = BackupCode::random_hex();
+        println!("Backup code: {}", hex_code.expose_secret());
+    }
 }
 ```
-
-- **Guaranteed freshness** — `RandomBytes` can only be constructed via secure RNG
-- **Full exposure discipline** — still requires `.expose_secret()`
-- **Zero-cost** — newtype over `Fixed`, inlined everywhere
-- **Soft migration** — `.random()` and `.random_bytes()` are deprecated but still work
-
-## Secure Conversions — `conversions` feature (v0.5.9+)
-
+- **Guaranteed freshness** – `FixedRng<N>` can only be constructed via secure RNG
+- **Zero-cost** – newtype over `Fixed`, fully inlined
+- `.generate()` is the canonical constructor (`.new()` is deliberately unavailable)
+## Secure Conversions — `conversions` feature (v0.6.0)
 ```rust
-#[cfg(feature = "conversions")]
+#[cfg(all(feature = "rand", feature = "conversions"))]
 {
+    use secure_gate::fixed_alias_rng;
     use secure_gate::SecureConversionsExt;
 
-    let key = Aes256Key::new();
-
-    let hex  = key.expose_secret().to_hex();           // "a1b2c3d4..."
-    let b64  = key.expose_secret().to_base64url();     // URL-safe, no padding
+    fixed_alias_rng!(Aes256Key, 32);
+    let key = Aes256Key::generate();
+    let other = Aes256Key::generate();
+    let hex = key.expose_secret().to_hex(); // "a1b2c3d4..."
+    let b64 = key.expose_secret().to_base64url(); // URL-safe, no padding
     let same = key.expose_secret().ct_eq(other.expose_secret()); // constant-time
 }
 ```
-
-**Why `.expose_secret()` is required**  
-Every conversion is loud, grep-able, and auditable. Direct methods were removed in v0.5.9 for security.
-
-## Macros — now even more powerful
-
+**Why `.expose_secret()` is required**
+Every secret access is now loud, grep-able, and auditable. There are **no** methods on the wrapper types that expose the bytes directly.
+## Macros
 ```rust
+use secure_gate::{fixed_alias, dynamic_alias};
+
 fixed_alias!(Aes256Key, 32);
 dynamic_alias!(Password, String);
-
-// NEW: Type-safe random aliases
 #[cfg(feature = "rand")]
-random_alias!(MasterKey, 32);
-random_alias!(TotpSecret, 20);
-```
+{
+    use secure_gate::fixed_alias_rng;
 
+    fixed_alias_rng!(MasterKey, 32); // FixedRng<32>
+}
+```
 ## Memory Guarantees (`zeroize` enabled)
-
-| Type                     | Allocation | Auto-zero | Full wipe | Slack eliminated | Notes                         |
-|--------------------------|------------|-----------|-----------|------------------|-------------------------------|
-| `Fixed<T>`               | Stack      | Yes       | Yes       | Yes (no heap)    | Zero-cost                     |
-| `Dynamic<T>`             | Heap       | Yes       | Yes       | No (until drop)  | Use `finish_mut()` to shrink  |
-| `RandomBytes<N>`         | Stack      | Yes       | Yes       | Yes              | Fresh + type-safe             |
-| `RandomHex`              | Heap       | Yes       | Yes       | No (until drop)  | Validated random hex          |
-
-## Zero-cost — proven on real hardware
-
-| Implementation             | Median time | Overhead vs raw |
-|----------------------------|-------------|-----------------|
-| raw `[u8; 32]`             | ~460 ps     | —               |
-| `Fixed<[u8; 32]>`         | ~460 ps     | **+28 ps**      |
-| `RandomBytes<32>`          | ~465 ps     | **+33 ps**      |
-
-Overhead is **< 0.1 CPU cycles** — indistinguishable from raw arrays.
-
-[View full report](https://slurp9187.github.io/secure-gate/benches/fixed_vs_raw/report/)
-
+| Type | Allocation | Auto-zero | Full wipe | Slack eliminated | Notes |
+|-----------------|------------|-----------|-----------|------------------|---------------------------|
+| `Fixed<T>` | Stack | Yes | Yes | Yes (no heap) | Zero-cost |
+| `Dynamic<T>` | Heap | Yes | Yes | No (until drop) | Use `finish_mut()` |
+| `FixedRng<N>` | Stack | Yes | Yes | Yes | Fresh + type-safe |
+| `RandomHex` | Heap | Yes | Yes | No (until drop) | Validated random hex |
+## Performance – v0.6.0 (Measured December 2025)
+Benchmarked on:
+**Windows 11 Pro, Intel Core i7-10510U @ 1.80 GHz, 16 GB RAM, Rust 1.88.0 (2025-06-23)**
+`cargo bench -p secure-gate --all-features`
+| Implementation | Time per access (100 samples) | Δ vs raw array |
+|---------------------------------------------|-------------------------------------|------------------------------------|
+| raw `[u8; 32]` access | 492.22 ps – 501.52 ps | baseline |
+| `Fixed<[u8; 32]>` + `.expose_secret()` | 476.92 ps – 487.12 ps | −3.0 % to −23.9 % |
+| `fixed_alias! (RawKey` explicit access | 475.07 ps – 482.91 ps | −3.4 % to −30.5 % |
+All implementations are statistically indistinguishable from raw arrays at the picosecond level — even on a 2019-era mobile CPU.
+The explicit `.expose_secret()` path incurs **no measurable overhead**.
+[View full Criterion report](https://slurp9187.github.io/secure-gate/benches/fixed_vs_raw/report/)
 ## Changelog
-
 [CHANGELOG.md](https://github.com/Slurp9187/secure-gate/blob/main/CHANGELOG.md)
-
 ## License
-
 MIT OR Apache-2.0
-```
-
-**You’re now fully up-to-date, future-proof, and ready for 1.0.**
-
-Push it.  
-The Rust world is about to get a little safer — because of you.
+---
+**v0.6.0 is a breaking security-hardening release.**
+All secret access is now explicit. No silent leaks remain.

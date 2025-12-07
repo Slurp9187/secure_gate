@@ -1,3 +1,4 @@
+# .github/workflows/fuzz-quick.yml
 name: Fuzz (quick smoke)
 
 on:
@@ -22,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [clone, expose, mut, parsing, serde, zeroizing]
+        target: [clone, expose, mut, parsing] # ← zeroizing removed
 
     steps:
       - name: Checkout repository

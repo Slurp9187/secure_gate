@@ -1,25 +1,25 @@
+// ==========================================================================
 // tests/integration.rs
-// Core integration tests — no macro usage here
+// ==========================================================================
+// Core integration tests — pure v0.6.0 API
 
-use secure_gate::{Dynamic, Fixed};
+use secure_gate::{Dynamic, DynamicNoClone, Fixed};
 
 #[test]
-fn basic_usage_and_deref() {
+fn basic_usage_explicit_access() {
     let mut key = Fixed::new([0u8; 32]);
     let mut pw = Dynamic::<String>::new("hunter2".to_string());
 
     assert_eq!(key.len(), 32);
-    assert_eq!(pw.len(), 7);
-    assert_eq!(&*pw, "hunter2");
+    assert!(!key.is_empty());
+    assert_eq!(pw.expose_secret().len(), 7);
+    assert_eq!(pw.expose_secret(), "hunter2");
 
-    pw.push('!');
-    key[0] = 1;
+    pw.expose_secret_mut().push('!');
+    key.expose_secret_mut()[0] = 1;
 
-    assert_eq!(&*pw, "hunter2!");
-    assert_eq!(key[0], 1);
-
-    let s: &str = &pw;
-    assert_eq!(s, "hunter2!");
+    assert_eq!(pw.expose_secret(), "hunter2!");
+    assert_eq!(key.expose_secret()[0], 1); // ← fixed: proper assert_eq!
 }
 
 #[test]
@@ -33,17 +33,10 @@ fn debug_is_redacted() {
     let key = Fixed::new([0u8; 32]);
     let pw = Dynamic::<String>::new("hunter2".to_string());
 
-    let key_debug = format!("{key:?}");
-    let pw_debug = format!("{pw:?}");
-
-    assert_eq!(key_debug, "[REDACTED]");
-    assert_eq!(pw_debug, "[REDACTED]");
-
-    let key_pretty = format!("{key:#?}");
-    let pw_pretty = format!("{pw:#?}");
-
-    assert_eq!(key_pretty, "[REDACTED]");
-    assert_eq!(pw_pretty, "[REDACTED]");
+    assert_eq!(format!("{key:?}"), "[REDACTED]");
+    assert_eq!(format!("{pw:?}"), "[REDACTED]");
+    assert_eq!(format!("{key:#?}"), "[REDACTED]");
+    assert_eq!(format!("{pw:#?}"), "[REDACTED]");
 }
 
 #[test]
@@ -52,11 +45,11 @@ fn clone_dynamic_is_isolated() {
     let pw2 = pw1.clone();
 
     let mut pw1_mut = pw1.clone();
-    pw1_mut.push('!');
+    pw1_mut.expose_secret_mut().push('!');
 
-    assert_eq!(&*pw1, "original");
-    assert_eq!(&*pw2, "original");
-    assert_eq!(&*pw1_mut, "original!");
+    assert_eq!(pw1.expose_secret(), "original");
+    assert_eq!(pw2.expose_secret(), "original");
+    assert_eq!(pw1_mut.expose_secret(), "original!");
 }
 
 #[test]
@@ -69,45 +62,55 @@ fn into_inner_extracts() {
     assert_eq!(&*boxed, "secret");
 }
 
-#[cfg(feature = "serde")]
 #[test]
-fn serde_dynamic_serializes() {
-    let pw = Dynamic::<String>::new("hunter2".to_string());
-    let json = serde_json::to_string(&pw).unwrap();
-    assert_eq!(json, "\"hunter2\"");
-}
-
-#[cfg(feature = "serde")]
-#[test]
-fn dynamic_deserialize_is_blocked_with_clear_error() {
-    use serde::Deserialize;
-
-    #[derive(Deserialize, Debug)]
-    struct Wrapper {
-        #[allow(dead_code)]
-        secret: Dynamic<String>,
-    }
-
-    let json = r#"{"secret": "hunter2"}"#;
-
-    let err = serde_json::from_str::<Wrapper>(json).expect_err("Deserialization should fail");
-
-    let msg = err.to_string();
-    assert!(
-        msg.contains("Deserialization of Dynamic<T> is intentionally disabled")
-            || msg.contains("Dynamic<T> is intentionally disabled"),
-        "Error message should explain security rationale. Got: {msg}"
-    );
-}
-
-#[test]
-fn fixed_as_ref_as_mut() {
+fn explicit_access_for_byte_arrays() {
     let mut key = Fixed::new([42u8; 32]);
-    let slice: &[u8] = key.as_ref();
+
+    let slice: &[u8] = key.expose_secret();
     assert_eq!(slice.len(), 32);
     assert_eq!(slice[0], 42);
 
-    let mut_slice: &mut [u8] = key.as_mut();
+    let mut_slice: &mut [u8] = key.expose_secret_mut();
     mut_slice[0] = 99;
-    assert_eq!(key[0], 99);
+    assert_eq!(key.expose_secret()[0], 99);
+}
+
+#[test]
+fn dynamic_len_is_empty() {
+    let pw: Dynamic<String> = "hunter2".into();
+    assert_eq!(pw.len(), 7);
+    assert!(!pw.is_empty());
+
+    let empty: Dynamic<String> = "".into();
+    assert_eq!(empty.len(), 0);
+    assert!(empty.is_empty());
+}
+
+#[test]
+fn dynamic_no_clone_len_is_empty() {
+    let pw: DynamicNoClone<String> = DynamicNoClone::new(Box::new("hunter2".to_string()));
+    assert_eq!(pw.len(), 7);
+    assert!(!pw.is_empty());
+
+    let empty: DynamicNoClone<String> = DynamicNoClone::new(Box::new("".to_string()));
+    assert_eq!(empty.len(), 0);
+    assert!(empty.is_empty());
+}
+
+#[cfg(feature = "rand")]
+#[test]
+fn rng_len_is_empty() {
+    use secure_gate::{DynamicRng, FixedRng};
+
+    let rng: FixedRng<32> = FixedRng::generate();
+    assert_eq!(rng.len(), 32);
+    assert!(!rng.is_empty());
+
+    let dyn_rng: DynamicRng = DynamicRng::generate(64);
+    assert_eq!(dyn_rng.len(), 64);
+    assert!(!dyn_rng.is_empty());
+
+    let empty: DynamicRng = DynamicRng::generate(0);
+    assert_eq!(empty.len(), 0);
+    assert!(empty.is_empty());
 }

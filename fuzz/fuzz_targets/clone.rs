@@ -1,8 +1,8 @@
 // fuzz/fuzz_targets/clone.rs
 #![no_main]
-use libfuzzer_sys::fuzz_target;
 
-use arbitrary::Arbitrary; // ← ADD THIS LINE
+use arbitrary::{Arbitrary, Unstructured};
+use libfuzzer_sys::fuzz_target;
 use secure_gate::{Dynamic, Fixed};
 use secure_gate_fuzz::arbitrary::{FuzzDynamicString, FuzzDynamicVec, FuzzFixed32};
 
@@ -14,7 +14,7 @@ fuzz_target!(|data: &[u8]| {
         return;
     }
 
-    let mut u = arbitrary::Unstructured::new(data);
+    let mut u = Unstructured::new(data);
 
     let fixed_32: Fixed<[u8; 32]> = match FuzzFixed32::arbitrary(&mut u) {
         Ok(f) => f.0,
@@ -31,18 +31,18 @@ fuzz_target!(|data: &[u8]| {
         Err(_) => return,
     };
 
-    // === All your original tests below (unchanged) ===
     // Test 1: Empty container lifecycle
     {
         let empty = Dynamic::<Vec<u8>>::new(Vec::new());
-        let cloned_empty = empty.clone();
-        drop(cloned_empty);
+        let _ = empty.clone();
+        drop(empty);
 
         #[cfg(feature = "zeroize")]
         {
-            let mut empty = empty;
+            let mut empty = Dynamic::<Vec<u8>>::new(Vec::new());
             empty.zeroize();
-            if !empty.is_empty() {
+            if !empty.expose_secret().is_empty() {
+                // ← fixed
                 return;
             }
         }
@@ -52,52 +52,58 @@ fuzz_target!(|data: &[u8]| {
     let original_data = dyn_vec.expose_secret().clone();
     let mut original = Dynamic::<Vec<u8>>::new(original_data.clone());
     let mut clone = original.clone();
-    clone.push(0xFF);
+    clone.expose_secret_mut().push(0xFF); // ← safer than .push() on wrapper
 
-    if &*original != &original_data {
+    if original.expose_secret() != &original_data {
         return;
     }
-    if clone.len() != original_data.len() + 1 {
+    if clone.expose_secret().len() != original_data.len() + 1 {
+        // ← fixed
         return;
     }
-    if &clone[..original_data.len()] != &original_data[..] {
+    if &clone.expose_secret()[..original_data.len()] != &original_data[..] {
         return;
     }
-    if clone[original_data.len()] != 0xFF {
+    if clone.expose_secret()[original_data.len()] != 0xFF {
         return;
     }
 
-    // Test 3: Original mutation
-    original.push(0xAA);
-    if clone.len() != original_data.len() + 1 {
+    // Test 3: Original mutation doesn't affect clone
+    original.expose_secret_mut().push(0xAA);
+    if clone.expose_secret().len() != original_data.len() + 1 {
+        // ← fixed
         return;
     }
 
     // Test 4: Zeroization
-    let pre_zero_len = original.len();
     #[cfg(feature = "zeroize")]
-    original.zeroize();
-    #[cfg(feature = "zeroize")]
-    if !original.iter().all(|&b| b == 0) || original.len() != pre_zero_len {
-        return;
+    {
+        let pre_len = original.expose_secret().len();
+        original.zeroize();
+        if original.expose_secret().len() != pre_len
+            || !original.expose_secret().iter().all(|&b| b == 0)
+        {
+            return;
+        }
     }
 
-    // Test 7: String handling
+    // Test 5: String handling
     let pw_str = dyn_str.expose_secret().clone();
     let secure_str: Dynamic<String> = Dynamic::new(pw_str.clone());
-    let _str_clone = secure_str.clone();
-    if &*secure_str != &pw_str {
+    let _ = secure_str.clone();
+    if secure_str.expose_secret() != &pw_str {
         return;
     }
 
-    // Test 8: Fixed-size
-    let _ = fixed_32.len();
+    // Test 6: Fixed-size access
+    let _ = fixed_32.expose_secret();
 
     // Final cleanup
     #[cfg(feature = "zeroize")]
-    clone.zeroize();
-    #[cfg(feature = "zeroize")]
-    if !clone.iter().all(|&b| b == 0) {
-        return;
+    {
+        clone.zeroize();
+        if !clone.expose_secret().iter().all(|&b| b == 0) {
+            return;
+        }
     }
 });

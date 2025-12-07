@@ -5,6 +5,35 @@ All changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),  
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2025-12-06
+
+### Breaking Changes
+- Removed `Deref`/`DerefMut` from `Fixed<T>`.
+- Made the inner field of `Fixed<T>` private.
+- Removed inherent conversion methods (`.to_hex()`, `.to_hex_upper()`, `.to_base64url()`, `.ct_eq()`) from `Fixed<[u8; N]>` and aliases.
+- Implemented `SecureConversionsExt` only on raw `[u8]` and `[u8; N]`, requiring explicit `.expose_secret()` for conversions.
+- Removed deprecated direct-conversion shims from 0.5.x.
+- Replaced `RandomBytes<N>` with `FixedRng<N>`, a newtype over `Fixed<[u8; N]>`.
+- Removed `serde` feature; serialization requires user implementation.
+- Switched RNG to direct `rand::rngs::OsRng` usage, removing `thread_local!` and `RefCell`.
+
+### Added
+- `len()` and `is_empty()` on `Fixed<[u8; N]>`.
+- `HexString::new` with zero extra allocations: in-place lowercasing, validation, and zeroization of rejected inputs under `zeroize`.
+- Compile-time negative impl guard for `SecureConversionsExt` on wrapper types.
+- `rand_core = { version = "0.9", optional = true }` dependency for `rand` feature.
+- Direct `OsRng` calls in `FixedRng<N>::generate()` and `DynamicRng::generate()`.
+
+### Fixed
+- Lifetime issue in `FixedRng::<N>::random_hex()`.
+- `ct_eq` bounds on fixed-size arrays, using `.as_slice()`.
+- Updated tests and benchmarks to explicit `.expose_secret()`.
+- Internal cleanups and dead code removal.
+
+### Performance
+- Benchmarks show `Fixed<[u8; 32]> + .expose_secret()` indistinguishable from raw `[u8; 32]` access on Intel i7-10510U (2019).
+- Direct `OsRng` usage increases key generation throughput by 8–10% over prior `thread_local!` implementation.
+
 ## [0.5.10] - 2025-12-02
 
 ### Added

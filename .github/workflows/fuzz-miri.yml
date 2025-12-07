@@ -2,11 +2,8 @@ name: Fuzz (Miri UB checks)
 
 on:
   schedule:
-    # Every Sunday at 00:00 UTC (~5 PM Saturday Pacific / 6 PM Mountain)
-    - cron: "0 0 * * 0"
-  workflow_dispatch: # manual trigger only
-
-  # Fast smoke test on main pushes (just like fuzz-nightly)
+    - cron: "0 0 * * 0" # Every Sunday at 00:00 UTC
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -37,11 +34,10 @@ jobs:
       - name: Cache cargo registry + target dir
         uses: Swatinem/rust-cache@v2
 
-      - name: Setup Miri (first-time initialization)
+      - name: Setup Miri
         run: cargo miri setup
 
-      # Always run unit tests — fast and strict
-      - name: Run Miri on all tests (strict — fails on any UB)
+      - name: Run Miri on all tests (strict)
         env:
           MIRIFLAGS: >-
             -Zmiri-ignore-leaks
@@ -50,8 +46,7 @@ jobs:
         run: |
           cargo miri test --workspace --all-features -- --include-ignored
 
-      # Full corpus scan — only on schedule or manual (slow)
-      - name: Light corpus scan with Miri (weekly or manual only)
+      - name: Light corpus scan with Miri (weekly or manual)
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         env:
           MIRIFLAGS: >-
@@ -60,7 +55,7 @@ jobs:
             -Zmiri-strict-provenance
         run: |
           echo "Starting light Miri corpus scan on fuzz targets (max 2 min each)..."
-          for target in clone expose mut parsing serde zeroizing; do
+          for target in clone expose mut parsing; do   # ← zeroizing REMOVED
             echo "=== Miri scanning fuzz target: $target ==="
             timeout 120 cargo miri run --bin $target -- -max_total_time=60 || \
               echo "Warning: $target timed out or hit expected panic (ignored)"

@@ -1,72 +1,61 @@
+// ==========================================================================
 // src/dynamic.rs
-//! Heap-allocated secure wrappers for dynamic secrets.
-//!
-//! `Dynamic<T>` is a zero-cost wrapper around `Box<T>` that:
-//! - Prevents accidental cloning/leaking via `Debug` redaction.
-//! - Provides explicit access via `.expose_secret()` (canonical API).
-//! - Supports idiomatic `.into()` conversions from owned values.
-//! - Works seamlessly with [`dynamic_alias!`] for type aliases.
-//!
-//! # Examples
-//!
-//! ```
-//! use secure_gate::{dynamic_alias, Dynamic};
-//!
-//! dynamic_alias!(Password, String);
-//!
-//! let pw: Password = "hunter2".into();
-//! assert_eq!(pw.expose_secret(), "hunter2");
-//! ```
+// ==========================================================================
 
 extern crate alloc;
 
 use alloc::boxed::Box;
-use core::ops::{Deref, DerefMut};
 
-/// A zero-cost, heap-allocated wrapper for sensitive data.
+/// Heap-allocated secure secret wrapper.
 ///
-/// `Dynamic<T>` stores its value on the heap via `Box<T>`. It behaves like `T`
-/// thanks to `Deref`/`DerefMut`, but redacts itself in debug output and requires
-/// explicit access to the inner value.
+/// This is a thin wrapper around `Box<T>` with enforced explicit exposure.
+/// Suitable for dynamic-sized secrets like `String` or `Vec<u8>`.
 ///
-/// Use this for dynamic-sized secrets like passwords or variable-length keys.
+/// Security invariants:
+/// - No `Deref` or `AsRef` — prevents silent access.
+/// - `Debug` is always redacted.
+/// - With `zeroize`, wipes the entire allocation on drop (including spare capacity).
 ///
 /// # Examples
 ///
+/// Basic usage:
 /// ```
 /// use secure_gate::Dynamic;
-///
-/// let secret: Dynamic<Vec<u8>> = vec![1, 2, 3].into();
-/// assert_eq!(secret.expose_secret(), &[1, 2, 3]);
+/// let secret: Dynamic<String> = "hunter2".into();
+/// assert_eq!(secret.expose_secret(), "hunter2");
 /// ```
-pub struct Dynamic<T: ?Sized>(pub Box<T>);
+///
+/// Mutable access:
+/// ```
+/// use secure_gate::Dynamic;
+/// let mut secret = Dynamic::<String>::new("pass".to_string());
+/// secret.expose_secret_mut().push('!');
+/// assert_eq!(secret.expose_secret(), "pass!");
+/// ```
+///
+/// With `zeroize` (automatic wipe):
+/// ```
+/// # #[cfg(feature = "zeroize")]
+/// # {
+/// use secure_gate::Dynamic;
+/// let secret = Dynamic::<Vec<u8>>::new(vec![1u8; 32]);
+/// drop(secret); // heap wiped automatically
+/// # }
+/// ```
+pub struct Dynamic<T: ?Sized>(Box<T>);
 
 impl<T: ?Sized> Dynamic<T> {
-    /// Creates a new `Dynamic` from a boxed value.
+    /// Wrap an already-boxed value.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use secure_gate::Dynamic;
-    ///
-    /// let secret = Dynamic::new_boxed(Box::new("hello".to_string()));
-    /// assert_eq!(secret.expose_secret(), "hello");
-    /// ```
+    /// Zero-cost — just wraps the `Box`.
     #[inline(always)]
     pub fn new_boxed(value: Box<T>) -> Self {
         Dynamic(value)
     }
 
-    /// Creates a new `Dynamic` from a value that can be converted into `Box<T>`.
+    /// Wrap a value by boxing it.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use secure_gate::Dynamic;
-    ///
-    /// let secret: Dynamic<String> = Dynamic::new("hunter2".to_string());
-    /// assert_eq!(secret.expose_secret(), "hunter2");
-    /// ```
+    /// Uses `Into<Box<T>>` for flexibility.
     #[inline(always)]
     pub fn new<U>(value: U) -> Self
     where
@@ -74,110 +63,58 @@ impl<T: ?Sized> Dynamic<T> {
     {
         Dynamic(value.into())
     }
-}
 
-impl<T: ?Sized> Deref for Dynamic<T> {
-    type Target = T;
-
-    /// Dereferences the wrapper to access the inner value immutably.
+    /// Expose the inner value for read-only access.
+    ///
+    /// This is the **only** way to read the secret — loud and auditable.
     #[inline(always)]
-    fn deref(&self) -> &T {
-        &self.0
-    }
-}
-
-impl<T: ?Sized> DerefMut for Dynamic<T> {
-    /// Dereferences the wrapper mutably to access the inner value.
-    #[inline(always)]
-    fn deref_mut(&mut self) -> &mut T {
-        &mut self.0
-    }
-}
-
-impl<T: ?Sized> core::fmt::Debug for Dynamic<T> {
-    /// Formats the value as "[REDACTED]" to prevent leakage in debug output.
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str("[REDACTED]")
-    }
-}
-
-impl<T: ?Sized> Dynamic<T> {
-    /// Accesses the secret value immutably.
-    ///
-    /// This is the canonical, explicit way to read the secret.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use secure_gate::Dynamic;
-    ///
-    /// let secret: Dynamic<String> = "secret".into();
-    /// assert_eq!(secret.expose_secret(), "secret");
-    /// ```
-    #[inline(always)]
-    pub fn expose_secret(&self) -> &T {
+    pub const fn expose_secret(&self) -> &T {
         &self.0
     }
 
-    /// Accesses the secret value mutably.
+    /// Expose the inner value for mutable access.
     ///
-    /// Use for in-place modifications.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use secure_gate::Dynamic;
-    ///
-    /// let mut secret: Dynamic<String> = "hello".into();
-    /// secret.expose_secret_mut().push('!');
-    /// assert_eq!(secret.expose_secret(), "hello!");
-    /// ```
+    /// This is the **only** way to mutate the secret — loud and auditable.
     #[inline(always)]
     pub fn expose_secret_mut(&mut self) -> &mut T {
         &mut self.0
     }
 
-    /// **Deprecated**: Use [`expose_secret`] instead.
+    /// Consume the wrapper and return the inner `Box<T>`.
     ///
-    /// This method forwards to [`expose_secret`] for compatibility.
-    #[deprecated(since = "0.5.5", note = "use `expose_secret` instead")]
-    #[doc(hidden)]
-    #[inline(always)]
-    pub fn view(&self) -> &T {
-        self.expose_secret()
-    }
-
-    /// **Deprecated**: Use [`expose_secret_mut`] instead.
-    ///
-    /// This method forwards to [`expose_secret_mut`] for compatibility.
-    #[deprecated(since = "0.5.5", note = "use `expose_secret_mut` instead")]
-    #[doc(hidden)]
-    #[inline(always)]
-    pub fn view_mut(&mut self) -> &mut T {
-        self.expose_secret_mut()
-    }
-
-    /// Consumes the wrapper and returns the inner boxed value.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use secure_gate::Dynamic;
-    ///
-    /// let secret: Dynamic<String> = "owned".into();
-    /// let owned: Box<String> = secret.into_inner();
-    /// assert_eq!(&*owned, "owned");
-    /// ```
+    /// Note: If `zeroize` is enabled, prefer dropping the `Dynamic` to ensure wiping.
     #[inline(always)]
     pub fn into_inner(self) -> Box<T> {
         self.0
     }
+
+    /// Convert to a non-cloneable variant.
+    ///
+    /// Prevents accidental cloning of the secret.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use secure_gate::{Dynamic, DynamicNoClone};
+    /// let secret = Dynamic::<String>::new("no copy".to_string());
+    /// let no_clone: DynamicNoClone<String> = secret.no_clone();
+    /// assert_eq!(no_clone.expose_secret(), "no copy");
+    /// ```
+    #[inline(always)]
+    pub fn no_clone(self) -> crate::DynamicNoClone<T> {
+        crate::DynamicNoClone::new(self.0)
+    }
 }
 
-// Clone impls
+impl<T: ?Sized> core::fmt::Debug for Dynamic<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("[REDACTED]")
+    }
+}
+
+// Clone impls — gated correctly
 #[cfg(not(feature = "zeroize"))]
 impl<T: Clone> Clone for Dynamic<T> {
-    /// Clones the wrapper, cloning the inner value.
     #[inline(always)]
     fn clone(&self) -> Self {
         Dynamic(self.0.clone())
@@ -186,79 +123,57 @@ impl<T: Clone> Clone for Dynamic<T> {
 
 #[cfg(feature = "zeroize")]
 impl<T: Clone + zeroize::Zeroize> Clone for Dynamic<T> {
-    /// Clones the wrapper, cloning the inner value.
     #[inline(always)]
     fn clone(&self) -> Self {
         Dynamic(self.0.clone())
     }
 }
 
+// === Ergonomic helpers for common heap types ===
 impl Dynamic<String> {
-    /// Shrinks the string's capacity to fit its length and returns a mutable reference.
-    ///
-    /// Use this to eliminate slack memory after mutations.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use secure_gate::Dynamic;
-    ///
-    /// let mut secret: Dynamic<String> = String::with_capacity(100).into();
-    /// secret.push_str("short");
-    /// let s: &mut String = secret.finish_mut();
-    /// assert_eq!(s.capacity(), 5);
-    /// ```
     pub fn finish_mut(&mut self) -> &mut String {
-        let s = &mut **self;
+        let s = &mut *self.0;
         s.shrink_to_fit();
         s
     }
-}
 
-impl Dynamic<Vec<u8>> {
-    /// Shrinks the vector's capacity to fit its length and returns a mutable reference.
-    ///
-    /// Use this to eliminate slack memory after mutations.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use secure_gate::Dynamic;
-    ///
-    /// let mut secret: Dynamic<Vec<u8>> = Vec::with_capacity(100).into();
-    /// secret.extend_from_slice(b"short");
-    /// let v: &mut Vec<u8> = secret.finish_mut();
-    /// assert_eq!(v.capacity(), 5);
-    /// ```
-    pub fn finish_mut(&mut self) -> &mut Vec<u8> {
-        let v = &mut **self;
-        v.shrink_to_fit();
-        v
+    #[inline(always)]
+    pub const fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    #[inline(always)]
+    pub const fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 }
 
-// ——— .into() ergonomics ———
-/// Converts an owned value into a `Dynamic`.
-///
-/// # Examples
-///
-/// ```
-/// use secure_gate::Dynamic;
-///
-/// let secret: Dynamic<Vec<u8>> = vec![1, 2, 3].into();
-/// assert_eq!(secret.expose_secret(), &[1, 2, 3]);
-/// ```
-impl<T> From<T> for Dynamic<T>
-where
-    T: Sized,
-{
+impl<T> Dynamic<Vec<T>> {
+    pub fn finish_mut(&mut self) -> &mut Vec<T> {
+        let v = &mut *self.0;
+        v.shrink_to_fit();
+        v
+    }
+
+    #[inline(always)]
+    pub const fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    #[inline(always)]
+    pub const fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+// === Convenient From impls ===
+impl<T> From<T> for Dynamic<T> {
     #[inline(always)]
     fn from(value: T) -> Self {
         Self(Box::new(value))
     }
 }
 
-/// Converts a `Box<T>` into a `Dynamic<T>`.
 impl<T: ?Sized> From<Box<T>> for Dynamic<T> {
     #[inline(always)]
     fn from(boxed: Box<T>) -> Self {
@@ -266,16 +181,6 @@ impl<T: ?Sized> From<Box<T>> for Dynamic<T> {
     }
 }
 
-/// Convenience conversion from `&str` to `Dynamic<String>`.
-///
-/// # Examples
-///
-/// ```
-/// use secure_gate::Dynamic;
-///
-/// let secret: Dynamic<String> = "password".into();
-/// assert_eq!(secret.expose_secret(), "password");
-/// ```
 impl From<&str> for Dynamic<String> {
     #[inline(always)]
     fn from(s: &str) -> Self {
@@ -283,16 +188,28 @@ impl From<&str> for Dynamic<String> {
     }
 }
 
-// ───── Add PartialEq and Eq impls for Dynamic ─────
-/// Implements PartialEq for Dynamic<T> where T implements PartialEq.
-///
-/// This enables comparison on Dynamic types like Dynamic<String> or Dynamic<Vec<u8>>.
-impl<T: PartialEq + ?Sized> PartialEq for Dynamic<T> {
-    #[inline(always)]
-    fn eq(&self, other: &Self) -> bool {
-        **self == **other
+// Constant-time equality — only available with `conversions` feature
+#[cfg(feature = "conversions")]
+impl<T> Dynamic<T>
+where
+    T: ?Sized + AsRef<[u8]>,
+{
+    #[inline]
+    pub fn ct_eq(&self, other: &Self) -> bool {
+        use crate::conversions::SecureConversionsExt;
+        self.expose_secret()
+            .as_ref()
+            .ct_eq(other.expose_secret().as_ref())
     }
 }
 
-/// Implements Eq for Dynamic<T> where T implements Eq.
-impl<T: Eq + ?Sized> Eq for Dynamic<T> {}
+// Zeroize integration
+#[cfg(feature = "zeroize")]
+impl<T: ?Sized + zeroize::Zeroize> zeroize::Zeroize for Dynamic<T> {
+    fn zeroize(&mut self) {
+        self.0.zeroize();
+    }
+}
+
+#[cfg(feature = "zeroize")]
+impl<T: ?Sized + zeroize::Zeroize> zeroize::ZeroizeOnDrop for Dynamic<T> {}

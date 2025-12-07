@@ -1,9 +1,9 @@
 // fuzz/fuzz_targets/mut.rs
 //
-// Stress mutation, zeroization, builder paths, and nested secure types
-// (v0.5.0 – SecureGate, SecurePasswordBuilder, etc. are gone; use Dynamic<T>)
+// Mutation + zeroization stress target for secure-gate v0.6.0
+// No Deref, explicit expose only, zero warnings, works with --no-default-features
 #![no_main]
-use arbitrary::Arbitrary;
+use arbitrary::{Arbitrary, Unstructured};
 use libfuzzer_sys::fuzz_target;
 
 use secure_gate::{Dynamic, Fixed};
@@ -17,31 +17,37 @@ fuzz_target!(|data: &[u8]| {
         return;
     }
 
-    let mut u = arbitrary::Unstructured::new(data);
+    let mut u = Unstructured::new(data);
 
+    // Generate valid gated instances
     let fixed_32 = match FuzzFixed32::arbitrary(&mut u) {
         Ok(f) => f.0,
         Err(_) => return,
     };
+
     let dyn_vec = match FuzzDynamicVec::arbitrary(&mut u) {
         Ok(d) => d.0,
         Err(_) => return,
     };
+
+    // We actually use the string in zeroize path → keep it, just silence warning when zeroize is off
     let dyn_str = match FuzzDynamicString::arbitrary(&mut u) {
         Ok(d) => d.0,
         Err(_) => return,
     };
 
-    // 1. Dynamic<String> — full String abuse + explicit zeroization
+    // 1. Dynamic<String> — full mutation torture + explicit zeroize
     #[cfg(feature = "zeroize")]
     {
         let mut pw = dyn_str.clone();
         let text = pw.expose_secret().clone();
 
         {
-            let s = &mut *pw;
+            let s = pw.expose_secret_mut();
             s.clear();
             s.push_str(&text);
+
+            // Truncate to random byte length (not char boundary → stress UTF-8 handling)
             let max_bytes = text.len() % 1800;
             let truncate_to = text
                 .char_indices()
@@ -50,47 +56,55 @@ fuzz_target!(|data: &[u8]| {
                 .unwrap_or(text.len());
             s.truncate(truncate_to);
 
+            // Append tons of wide chars
             let append_count = (text.len() % 150).min(1000);
             for _ in 0..append_count {
                 s.push('🚀');
             }
-            pw.finish_mut();
         }
+        pw.finish_mut();
 
         if text.len() % 2 == 0 {
             pw.zeroize();
         }
+        drop(pw);
     }
 
-    // 2. Dynamic<Vec<u8>> — raw buffer torture
+    // When zeroize is disabled we still want to consume dyn_str to keep coverage identical
+    #[cfg(not(feature = "zeroize"))]
+    {
+        let _ = &dyn_str; // prevents unused variable warning
+    }
+
+    // 2. Dynamic<Vec<u8>> — raw buffer abuse
     let mut bytes = dyn_vec.clone();
     {
-        let v = &mut *bytes;
+        let v = bytes.expose_secret_mut();
         v.clear();
         v.extend_from_slice(data);
         let new_size = v.len().saturating_add(data.len().min(500_000));
         v.resize(new_size, 0xFF);
-        v.truncate(data.len() % 3000);
+        v.truncate(data.len().saturating_add(1) % 3000);
         v.retain(|&b| b != data[0]);
     }
+
     #[cfg(feature = "zeroize")]
     if data[0] % 3 == 0 {
         bytes.zeroize();
     }
     drop(bytes);
 
-    // 3. Fixed-size array + clone isolation
+    // 3. Fixed<[u8; 32]> — clone isolation + mutation
     let mut key = fixed_32;
-    let original_first_byte = key[0]; // ← capture before mutation
+    let original_first = key.expose_secret()[0];
     if data.len() > 1 {
-        key[0] = !key[0];
-        if original_first_byte == key[0] {
-            panic!("Isolation failed");
+        key.expose_secret_mut()[0] = !original_first;
+        if key.expose_secret()[0] == original_first {
+            panic!("Fixed mutation isolation failed");
         }
     }
-    // No need for explicit drop — Fixed<[u8; N]> implements Copy, so drop does nothing
 
-    // 4. Nested secure types
+    // 4. Nested Dynamic<Dynamic<Vec<u8>>>
     let nested = Dynamic::<Dynamic<Vec<u8>>>::new(Dynamic::new(data.to_vec()));
     #[cfg(feature = "zeroize")]
     if data[0] % 11 == 0 {
@@ -99,16 +113,15 @@ fuzz_target!(|data: &[u8]| {
     }
     drop(nested);
 
-    // 5. Edge cases
+    // 5. Small Fixed + empty Dynamic edge cases
     if data.len() >= 2 {
         let mut small = Fixed::new([data[0], data[1]]);
-        small[0] = data[0].wrapping_add(1);
-        // No need for explicit drop — Fixed<[u8; N]> implements Copy, so drop does nothing
+        small.expose_secret_mut()[0] = data[0].wrapping_add(1);
     }
 
     let mut empty_vec = Dynamic::<Vec<u8>>::new(Vec::new());
     if !data.is_empty() {
-        empty_vec.push(data[0]);
+        empty_vec.expose_secret_mut().push(data[0]);
     }
     #[cfg(feature = "zeroize")]
     if data[0] % 13 == 0 {
