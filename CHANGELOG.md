@@ -5,7 +5,7 @@ All changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),  
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.6.1] - 2025-12-07
+## [0.6.1] - 2025-12-08
 
 ### Security
 
@@ -45,6 +45,13 @@ fixed_alias!(pub MyKey, 32);          // Public type (explicit)
 fixed_alias!(MyPrivateKey, 32);       // Private type (no visibility modifier)
 fixed_alias!(pub(crate) Internal, 64); // Crate-visible type
 ```
+
+- **Enhanced benchmark suite**: Added comprehensive performance benchmarks to verify zero-cost abstraction claims
+  - Added mutable access benchmarks comparing raw arrays vs `Fixed<T>` with `expose_secret_mut()`
+  - Added construction benchmarks to measure wrapper creation overhead
+  - Added feature-gated drop benchmarks to measure zeroization overhead (when `zeroize` feature is enabled)
+  - Updated benchmark documentation to reflect v0.6.1
+  - Benchmarks confirm `Fixed<T>` has zero measurable overhead for access operations (within measurement noise)
 
 ### Fixed
 
